@@ -1,22 +1,87 @@
+import re
+from urllib.parse import urlparse
 from crewai.tools import tool
 
+STOP_PHRASES = [
+    "what is", "explained", "definition", "beginners", "guide",
+    "how to", "tutorial", "history of", "basics", "introduction",
+]
 
-def build_news_tool(exa_client, *, bad_domains, good_domains, days_back, limit, max_summary_chars, use_include_domains: bool):
+
+def _domain(url: str) -> str:
+    try:
+        return urlparse(url).netloc.replace("www.", "")
+    except Exception:
+        return ""
+
+
+def _looks_evergreen(title: str, summary: str) -> bool:
+    txt = f"{title} {summary}".lower()
+    return any(p in txt for p in STOP_PHRASES)
+
+
+def _normalize_title(title: str) -> str:
+    t = title.lower().strip()
+    t = re.sub(r"\s+", " ", t)
+    t = re.sub(r"[^a-z0-9\s]", "", t)
+    return t
+
+
+def _dedupe_items(items: list, max_per_domain: int = 2) -> list:
+    """
+    Dedupe by normalized title + limit per domain to reduce spam/aggregators.
+    """
+    seen_titles = set()
+    domain_count = {}
+    out = []
+
+    for it in items:
+        title = getattr(it, "title", "") or ""
+        url = getattr(it, "url", "") or ""
+        dom = _domain(url)
+
+        nt = _normalize_title(title)
+        if not nt or nt in seen_titles:
+            continue
+
+        # limit per domain
+        domain_count.setdefault(dom, 0)
+        if dom and domain_count[dom] >= max_per_domain:
+            continue
+
+        seen_titles.add(nt)
+        domain_count[dom] += 1
+        out.append(it)
+
+    return out
+
+
+def build_news_tool(
+    exa_client,
+    *,
+    bad_domains,
+    good_domains,
+    days_back,
+    limit,
+    max_summary_chars,
+    use_include_domains: bool,
+):
     @tool("news_tool")
     def news_tool(ticker_symbol: str) -> str:
         """
         Fetch recent, non-definitional cryptocurrency news for the given ticker symbol.
-        Filters out encyclopedic and tracking websites and focuses on recent market-moving events.
+        Applies domain filtering, recency window, deduplication, and returns a compact feed
+        to support event-driven market analysis.
         """
-        query = f"""Latest {ticker_symbol} news this week. 
-            Focus on price drivers, regulation, ETFs, macro, exchange flows.
-            Avoid explanations of what {ticker_symbol} is.""".strip()
-
         include = good_domains if use_include_domains else None
-        res = exa_client.search_recent_news(
-            query=query,
+
+        # 1) Pull more than needed, then filter down
+        raw_limit = max(limit * 4, 12)
+
+        res = exa_client.search_recent_news_strict(
+            ticker_symbol=ticker_symbol,
             days_back=days_back,
-            limit=limit,
+            limit=raw_limit,
             exclude_domains=bad_domains,
             include_domains=include,
         )
@@ -24,23 +89,60 @@ def build_news_tool(exa_client, *, bad_domains, good_domains, days_back, limit, 
         if not res.results:
             return "No recent news results found."
 
-        # dodatkowo wycinamy wyniki bez daty (często evergreen/encyklopedia)
+        # 2) Prefer items with published_date
         items = [x for x in res.results if getattr(x, "published_date", None)]
         if not items:
             items = res.results
 
-        out = []
-        for item in items[:limit]:
-            title = getattr(item, "title", "No Title")
-            url = getattr(item, "url", "#")
-            published = getattr(item, "published_date", "Unknown Date")
-            summary = (getattr(item, "summary", "") or "").replace("\n", " ").strip()
+        # 3) Remove evergreen/definitional articles by content heuristics
+        filtered = []
+        for it in items:
+            title = getattr(it, "title", "") or ""
+            summary = getattr(it, "summary", "") or ""
+            url = getattr(it, "url", "") or ""
+            dom = _domain(url)
+
+            if dom in bad_domains:
+                continue
+            if _looks_evergreen(title, summary):
+                continue
+            filtered.append(it)
+
+        # 4) Dedupe + domain cap
+        filtered = _dedupe_items(filtered, max_per_domain=2)
+
+        # 5) Take final N
+        final_items = filtered[:limit] if filtered else items[:limit]
+
+        # 6) Format compact feed
+        out_lines = []
+        for it in final_items:
+            title = getattr(it, "title", "No Title")
+            url = getattr(it, "url", "#")
+            published = getattr(it, "published_date", "Unknown Date")
+            summary = (getattr(it, "summary", "") or "").replace("\n", " ").strip()
 
             if len(summary) > max_summary_chars:
                 summary = summary[: max_summary_chars - 3] + "..."
 
-            out.append(f"- {title}\n  Date: {published}\n  URL: {url}\n  Summary: {summary}")
+            out_lines.append(
+                f"- {title}\n"
+                f"  Date: {published}\n"
+                f"  Source: {_domain(url)}\n"
+                f"  URL: {url}\n"
+                f"  Summary: {summary}"
+            )
 
-        return "\n".join(out)
+        # 7) Add an "instruction header" to make LLM extract events (reduces generic output)
+        header = (
+            "TASK FOR ANALYST:\n"
+            "From the articles below, extract 3-5 MARKET-MOVING EVENTS (facts), each with:\n"
+            "• Event (one sentence)\n"
+            "• Why it matters for price (one sentence)\n"
+            "• Link (URL)\n"
+            "Ignore definitional content.\n"
+            "----\n"
+        )
+        return header + "\n\n".join(out_lines)
 
     return news_tool

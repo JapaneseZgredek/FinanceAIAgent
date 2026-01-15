@@ -9,9 +9,15 @@ def build_tasks(symbol: str, *, news_analyst, price_analyst, writer):
         description=f"""
             Use news_tool to fetch recent news about {symbol}.
             Today is {now}.
-            Write 1 paragraph analysis and end with: Prediction: UP/DOWN/NEUTRAL
+            Output format (STRICT):
+            1) Events (3-5 bullets): each bullet MUST include a URL.
+            2) Sentiment: Positive/Negative/Mixed (1 line)
+            3) Prediction: UP/DOWN/NEUTRAL (1 line)
+            Rules:
+            - No definitions of what {symbol} is.
+            - No Wikipedia / official docs style content.
             """.strip(),
-        expected_output="One paragraph plus a final 'Prediction: ...' line.",
+        expected_output="Events bullets with URLs + sentiment + prediction.",
         agent=news_analyst,
     )
 
