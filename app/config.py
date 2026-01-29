@@ -17,9 +17,10 @@ NEWS_MAX_SUMMARY_CHARS = int(os.getenv("NEWS_MAX_SUMMARY_CHARS", "280"))
 PRICE_WINDOW_DAYS = int(os.getenv("PRICE_WINDOW_DAYS", "120"))
 PRICE_LAST_N = int(os.getenv("PRICE_LAST_N", "10"))
 
-# Cache settings for Alpha Vantage
+# Cache settings
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
-CACHE_TTL_HOURS = float(os.getenv("CACHE_TTL_HOURS", "4"))  # Default 4 hours (range: 1-6)
+CACHE_TTL_HOURS = float(os.getenv("CACHE_TTL_HOURS", "4"))  # Alpha Vantage: 4 hours (range: 1-6)
+EXA_CACHE_TTL_MINUTES = float(os.getenv("EXA_CACHE_TTL_MINUTES", "20"))  # Exa news: 20 min (range: 10-30)
 
 USE_INCLUDE_DOMAINS = os.getenv("USE_INCLUDE_DOMAINS", "false").lower() in ("1", "true", "yes")
 
