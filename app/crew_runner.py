@@ -25,6 +25,9 @@ def run(symbol: str):
         model=GROQ_MODEL,
         api_key=GROQ_API_KEY,
         temperature=0,
+        # Retry configuration for transient errors
+        num_retries=3,
+        timeout=60,
     )
 
     exa_client = ExaClient(EXA_API_KEY)

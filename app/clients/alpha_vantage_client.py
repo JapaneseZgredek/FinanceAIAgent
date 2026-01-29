@@ -5,8 +5,16 @@ import pandas as pd
 
 from app.clients.cache import CacheManager
 from app.config import CACHE_DIR, CACHE_TTL_HOURS
+from app.utils.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+# Exceptions that should trigger retry for Alpha Vantage
+ALPHA_VANTAGE_RETRYABLE = (
+    requests.exceptions.ConnectionError,
+    requests.exceptions.Timeout,
+    requests.exceptions.ChunkedEncodingError,
+)
 
 
 class AlphaVantageClient:
@@ -15,14 +23,22 @@ class AlphaVantageClient:
         ttl = cache_ttl_hours if cache_ttl_hours is not None else CACHE_TTL_HOURS
         self.cache = CacheManager.with_ttl_hours(CACHE_DIR, ttl)
 
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=2.0,
+        max_delay=30.0,
+        retryable_exceptions=ALPHA_VANTAGE_RETRYABLE,
+    )
     def _fetch_from_api(self, ticker: str) -> dict:
-        """Make the actual API request to Alpha Vantage."""
+        """Make the actual API request to Alpha Vantage with retry."""
         url = (
             "https://www.alphavantage.co/query"
             f"?function=DIGITAL_CURRENCY_DAILY&symbol={ticker}"
             f"&market=USD&apikey={self.api_key}"
         )
-        return requests.get(url, timeout=30).json()
+        response = requests.get(url, timeout=30)
+        response.raise_for_status()  # Raise on HTTP errors
+        return response.json()
 
     def _get_cache_identifier(self, ticker: str) -> str:
         """Generate cache identifier for a ticker."""
