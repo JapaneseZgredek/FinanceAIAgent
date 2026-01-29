@@ -27,24 +27,88 @@ def _normalize_title(title: str) -> str:
     return t
 
 
-def _dedupe_items(items: list, max_per_domain: int = 2) -> list:
+def _extract_topic_fingerprint(title: str, summary: str) -> str:
     """
-    Dedupe by normalized title + limit per domain to reduce spam/aggregators.
+    Extract a 'topic fingerprint' to identify articles about the same event.
+    Combines key numbers, entities, and action words.
+    """
+    text = f"{title} {summary}".lower()
+    
+    # Extract monetary amounts (normalize billions/millions)
+    # Round to 1 decimal to catch $1.7B and $1.72B as same
+    amounts = re.findall(r'\$?(\d+(?:\.\d+)?)\s*(billion|million|b|m|bn|mn)', text)
+    normalized_amounts = []
+    for amt, unit in amounts:
+        val = round(float(amt), 1)  # Round to catch $1.7B == $1.72B
+        if unit in ('billion', 'b', 'bn'):
+            normalized_amounts.append(f"${val}B")
+        elif unit in ('million', 'm', 'mn'):
+            # Convert large millions to billions for consistency
+            if val >= 1000:
+                normalized_amounts.append(f"${round(val/1000, 1)}B")
+            else:
+                normalized_amounts.append(f"${val}M")
+    
+    # Extract key event words
+    event_keywords = []
+    event_patterns = [
+        (r'outflow|withdraw|redeem|bleed|losing|loss|lost', 'outflow'),
+        (r'inflow|deposit|buying', 'inflow'),
+        (r'etf', 'etf'),
+        (r'hack|exploit|breach|attack', 'hack'),
+        (r'sec|regulation|lawsuit|legal|enforcement', 'regulation'),
+        (r'blackrock|ibit', 'blackrock'),
+        (r'grayscale|gbtc', 'grayscale'),
+        (r'fidelity', 'fidelity'),
+        (r'approval|approved|reject|denied', 'approval'),
+        (r'surge|rally|jump|soar|pump|gain', 'price_up'),
+        (r'crash|dump|plunge|drop|fall|tank|slide', 'price_down'),
+        (r'halving', 'halving'),
+        (r'fed|fomc|rate|powell', 'fed'),
+        (r'trump|biden|election|president', 'politics'),
+    ]
+    
+    for pattern, keyword in event_patterns:
+        if re.search(pattern, text):
+            event_keywords.append(keyword)
+    
+    # Combine into fingerprint
+    fingerprint_parts = sorted(set(normalized_amounts + event_keywords))
+    return "|".join(fingerprint_parts) if fingerprint_parts else ""
+
+
+def _dedupe_items(items: list, max_per_domain: int = 2, max_per_topic: int = 1) -> list:
+    """
+    Dedupe by:
+    1. Exact normalized title
+    2. Topic fingerprint (articles about same event)
+    3. Limit per domain to reduce spam/aggregators
     """
     seen_titles = set()
+    seen_topics = {}  # topic -> count
     domain_count = {}
     out = []
 
     for it in items:
         title = getattr(it, "title", "") or ""
+        summary = getattr(it, "summary", "") or ""
         url = getattr(it, "url", "") or ""
         dom = _domain(url)
 
+        # 1) Skip exact duplicate titles
         nt = _normalize_title(title)
         if not nt or nt in seen_titles:
             continue
 
-        # limit per domain
+        # 2) Skip if we've seen too many articles on same topic
+        topic_fp = _extract_topic_fingerprint(title, summary)
+        if topic_fp:
+            seen_topics.setdefault(topic_fp, 0)
+            if seen_topics[topic_fp] >= max_per_topic:
+                continue
+            seen_topics[topic_fp] += 1
+
+        # 3) Limit per domain
         domain_count.setdefault(dom, 0)
         if dom and domain_count[dom] >= max_per_domain:
             continue
