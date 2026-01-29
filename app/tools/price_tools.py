@@ -7,6 +7,11 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
         """
         Provide a compact statistical summary of recent cryptocurrency prices,
         including volatility, momentum and recent closes.
+        
+        Args:
+            ticker_symbol: The cryptocurrency ticker symbol (e.g., "BTC", "ETH", "SOL")
+        
+        Example call: price_tool(ticker_symbol="BTC")
         """
         df = alpha_client.get_daily_prices(ticker_symbol)
 

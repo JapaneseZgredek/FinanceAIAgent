@@ -49,3 +49,8 @@ test-results.xml
 # =========================
 .mypy_cache/
 .pyre/
+
+# =========================
+# Application cache
+# =========================
+.cache/

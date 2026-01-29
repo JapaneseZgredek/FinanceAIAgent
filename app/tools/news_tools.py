@@ -72,6 +72,11 @@ def build_news_tool(
         Fetch recent, non-definitional cryptocurrency news for the given ticker symbol.
         Applies domain filtering, recency window, deduplication, and returns a compact feed
         to support event-driven market analysis.
+        
+        Args:
+            ticker_symbol: The cryptocurrency ticker symbol (e.g., "BTC", "ETH", "SOL")
+        
+        Example call: news_tool(ticker_symbol="BTC")
         """
         include = good_domains if use_include_domains else None
 
