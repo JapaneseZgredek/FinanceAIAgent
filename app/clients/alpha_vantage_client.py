@@ -1,25 +1,91 @@
+import logging
+
 import requests
 import pandas as pd
 
+from app.clients.cache import CacheManager
+from app.config import CACHE_DIR, CACHE_TTL_HOURS
+
+logger = logging.getLogger(__name__)
+
 
 class AlphaVantageClient:
-    def __init__(self, api_key: str):
+    def __init__(self, api_key: str, cache_ttl_hours: float | None = None):
         self.api_key = api_key
+        ttl = cache_ttl_hours if cache_ttl_hours is not None else CACHE_TTL_HOURS
+        self.cache = CacheManager.with_ttl_hours(CACHE_DIR, ttl)
 
-    def get_daily_prices(self, ticker: str) -> pd.DataFrame:
+    def _fetch_from_api(self, ticker: str) -> dict:
+        """Make the actual API request to Alpha Vantage."""
         url = (
             "https://www.alphavantage.co/query"
             f"?function=DIGITAL_CURRENCY_DAILY&symbol={ticker}"
             f"&market=USD&apikey={self.api_key}"
         )
-        data = requests.get(url, timeout=30).json()
+        return requests.get(url, timeout=30).json()
 
-        if "Note" in data:
-            raise RuntimeError(f"AlphaVantage rate limit: {data['Note']}")
-        if "Error Message" in data:
-            raise RuntimeError(f"AlphaVantage error: {data['Error Message']}")
-        if "Time Series (Digital Currency Daily)" not in data:
-            raise RuntimeError(f"Unexpected response keys: {list(data.keys())}")
+    def _get_cache_identifier(self, ticker: str) -> str:
+        """Generate cache identifier for a ticker."""
+        return f"alphavantage_daily_{ticker.upper()}"
+
+    def get_daily_prices(self, ticker: str) -> pd.DataFrame:
+        cache_id = self._get_cache_identifier(ticker)
+
+        # Check cache first
+        cached_data, is_fresh = self.cache.get(cache_id)
+
+        if cached_data and is_fresh:
+            logger.info(f"Using fresh cached data for {ticker}")
+            data = cached_data
+        else:
+            # Try to fetch from API
+            try:
+                data = self._fetch_from_api(ticker)
+
+                # Check for rate limit
+                if "Note" in data:
+                    if cached_data:
+                        logger.warning(
+                            f"Rate limited by AlphaVantage, falling back to cached data for {ticker}"
+                        )
+                        data = cached_data
+                    else:
+                        raise RuntimeError(f"AlphaVantage rate limit: {data['Note']}")
+
+                # Check for API errors
+                elif "Error Message" in data:
+                    if cached_data:
+                        logger.warning(
+                            f"API error, falling back to cached data for {ticker}: {data['Error Message']}"
+                        )
+                        data = cached_data
+                    else:
+                        raise RuntimeError(f"AlphaVantage error: {data['Error Message']}")
+
+                # Validate response has expected data
+                elif "Time Series (Digital Currency Daily)" not in data:
+                    if cached_data:
+                        logger.warning(
+                            f"Unexpected response, falling back to cached data for {ticker}"
+                        )
+                        data = cached_data
+                    else:
+                        raise RuntimeError(f"Unexpected response keys: {list(data.keys())}")
+
+                # Success - cache the new data
+                else:
+                    self.cache.set(cache_id, data)
+                    logger.info(f"Fetched and cached fresh data for {ticker}")
+
+            except requests.RequestException as e:
+                # Network error - try to use stale cache
+                if cached_data:
+                    logger.warning(
+                        f"Network error, falling back to cached data for {ticker}: {e}"
+                    )
+                    data = cached_data
+                else:
+                    raise RuntimeError(f"Network error and no cached data available: {e}")
 
         ts = data["Time Series (Digital Currency Daily)"]
 
@@ -35,5 +101,5 @@ class AlphaVantageClient:
         close = {d: pick_close(p) for d, p in ts.items()}
         df = pd.DataFrame.from_dict(close, orient="index", columns=["price"])
         df.index = pd.to_datetime(df.index)
-        df = df.sort_index()  # rosnąco
+        df = df.sort_index()  # ascending order
         return df
