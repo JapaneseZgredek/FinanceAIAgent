@@ -45,10 +45,17 @@ GOOD_NEWS_DOMAINS = [
 
 
 def validate_env() -> None:
+    """Validate that all required environment variables are set."""
+    from app.utils.errors import ConfigurationError
+    
     missing = [k for k, v in {
         "GROQ_API_KEY": GROQ_API_KEY,
         "EXA_API_KEY": EXA_API_KEY,
         "ALPHAVANTAGE_API_KEY": ALPHAVANTAGE_API_KEY,
     }.items() if not v]
+    
     if missing:
-        raise SystemExit(f"Missing env vars in .env: {', '.join(missing)}")
+        raise ConfigurationError(
+            message=f"Missing API keys: {', '.join(missing)}",
+            hint="Copy .env.example to .env and fill in your API keys.",
+        )
