@@ -6,8 +6,16 @@ from exa_py import Exa
 
 from app.clients.cache import CacheManager
 from app.config import CACHE_DIR, EXA_CACHE_TTL_MINUTES
+from app.utils.retry import retry_with_backoff
 
 logger = logging.getLogger(__name__)
+
+# Exceptions that should trigger retry for Exa
+EXA_RETRYABLE = (
+    ConnectionError,
+    TimeoutError,
+    OSError,
+)
 
 
 @dataclass
@@ -52,6 +60,12 @@ class ExaClient:
         """Generate cache identifier for news query."""
         return f"exa_news_{ticker_symbol.upper()}_{days_back}d_{limit}"
 
+    @retry_with_backoff(
+        max_retries=3,
+        base_delay=2.0,
+        max_delay=30.0,
+        retryable_exceptions=EXA_RETRYABLE,
+    )
     def search_recent_news(
         self,
         query: str,
@@ -60,6 +74,7 @@ class ExaClient:
         exclude_domains: list[str],
         include_domains: list[str] | None = None,
     ):
+        """Search for recent news with retry on transient errors."""
         start_date = (date.today() - timedelta(days=days_back)).isoformat()
 
         kwargs = dict(
