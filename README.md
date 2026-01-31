@@ -20,42 +20,71 @@ Code is split into clear layers:
 - **tasks**: task definitions and prompt formats
 - **runner**: wiring everything together and executing the Crew sequentially
 
-Typical structure:
+Project structure:
+
 ```
 Finance_AI_Agent/
-├── app/
-│   ├── config.py              # Configuration with validation
-│   ├── crew_runner.py         # Crew orchestration
-│   │
-│   ├── clients/
-│   │   ├── __init__.py
-│   │   ├── cache.py           # File-based caching system
-│   │   ├── exa_client.py      # Exa API client (with caching)
-│   │   └── alpha_vantage_client.py  # Alpha Vantage client (with caching)
-│   │
-│   ├── tools/
-│   │   ├── __init__.py
-│   │   ├── news_tools.py      # News tool with deduplication
-│   │   └── price_tools.py
-│   │
-│   ├── agents/
-│   │   ├── __init__.py
-│   │   └── build_agents.py
-│   │
-│   ├── tasks/
-│   │   ├── __init__.py
-│   │   └── build_tasks.py
-│   │
-│   └── utils/
-│       ├── __init__.py
-│       ├── retry.py           # Exponential backoff retry decorator
-│       └── errors.py          # User-friendly error handling
 │
-├── .cache/                    # Local cache directory (gitignored)
-├── main.py
-├── requirements.txt
-├── .env.example
-└── README.md
+├── main.py                         # 🚀 Entry point - run this to start
+├── requirements.txt                # Dependencies (pip install -r ...)
+├── requirements.lock.txt           # Locked versions for reproducibility
+├── .env.example                    # Template for environment variables
+├── README.md                       # This file
+│
+├── .cache/                         # 📦 Local cache (auto-created, gitignored)
+│   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
+│   └── exa_news/                   #    └── Cached news results (TTL: 10-30min)
+│
+└── app/                            # 📁 Main application package
+    ├── __init__.py
+    ├── config.py                   # ⚙️  Configuration loader + validation
+    ├── crew_runner.py              # 🎯 CrewAI orchestration (agents + tasks)
+    │
+    ├── clients/                    # 🌐 External API clients
+    │   ├── __init__.py
+    │   ├── cache.py                #    └── Generic file-based cache (TTL support)
+    │   ├── alpha_vantage_client.py #    └── Price data API (with caching + retry)
+    │   └── exa_client.py           #    └── News search API (with caching + retry)
+    │
+    ├── tools/                      # 🔧 CrewAI tools (callable by agents)
+    │   ├── __init__.py
+    │   ├── news_tools.py           #    └── News fetching + deduplication + limits
+    │   └── price_tools.py          #    └── Price stats + momentum + limits
+    │
+    ├── agents/                     # 🤖 CrewAI agent definitions
+    │   ├── __init__.py
+    │   └── build_agents.py         #    └── News analyst + Price analyst + Writer
+    │
+    ├── tasks/                      # 📋 CrewAI task definitions
+    │   ├── __init__.py
+    │   └── build_tasks.py          #    └── Task prompts + expected outputs
+    │
+    └── utils/                      # 🛠️  Shared utilities
+        ├── __init__.py
+        ├── retry.py                #    └── Exponential backoff decorator
+        ├── errors.py               #    └── Custom exceptions + user-friendly messages
+        └── prompt_limits.py        #    └── Hard caps on LLM prompt size
+```
+
+**Data flow:**
+```
+User Input (BTC) → main.py → crew_runner.py
+                                   │
+                    ┌──────────────┼──────────────┐
+                    ▼              ▼              ▼
+              news_tool      price_tool      LLM (Groq)
+                    │              │              │
+                    ▼              ▼              │
+              exa_client   alpha_vantage_client  │
+                    │              │              │
+                    └──────┬───────┘              │
+                           ▼                      │
+                    .cache/ (local)               │
+                           │                      │
+                           └──────────────────────┘
+                                   │
+                                   ▼
+                          Final Report (stdout)
 ```
 
 
