@@ -1,6 +1,15 @@
 import re
+import logging
 from urllib.parse import urlparse
 from crewai.tools import tool
+
+from app.utils.prompt_limits import (
+    enforce_tool_output_limits,
+    ABSOLUTE_MAX_NEWS_ARTICLES,
+    ABSOLUTE_MAX_SUMMARY_CHARS,
+)
+
+logger = logging.getLogger(__name__)
 
 STOP_PHRASES = [
     "what is", "explained", "definition", "beginners", "guide",
@@ -144,8 +153,17 @@ def build_news_tool(
         """
         include = good_domains if use_include_domains else None
 
+        # Enforce absolute maximums to prevent oversized prompts
+        safe_limit = min(limit, ABSOLUTE_MAX_NEWS_ARTICLES)
+        safe_max_chars = min(max_summary_chars, ABSOLUTE_MAX_SUMMARY_CHARS)
+        
+        if safe_limit < limit:
+            logger.warning(f"NEWS_LIMIT capped from {limit} to {safe_limit}")
+        if safe_max_chars < max_summary_chars:
+            logger.warning(f"NEWS_MAX_SUMMARY_CHARS capped from {max_summary_chars} to {safe_max_chars}")
+
         # 1) Pull more than needed, then filter down
-        raw_limit = max(limit * 4, 12)
+        raw_limit = max(safe_limit * 4, 12)
 
         res = exa_client.search_recent_news_strict(
             ticker_symbol=ticker_symbol,
@@ -180,8 +198,8 @@ def build_news_tool(
         # 4) Dedupe + domain cap
         filtered = _dedupe_items(filtered, max_per_domain=2)
 
-        # 5) Take final N
-        final_items = filtered[:limit] if filtered else items[:limit]
+        # 5) Take final N (enforce hard cap again)
+        final_items = filtered[:safe_limit] if filtered else items[:safe_limit]
 
         # 6) Format compact feed
         out_lines = []
@@ -191,8 +209,9 @@ def build_news_tool(
             published = getattr(it, "published_date", "Unknown Date")
             summary = (getattr(it, "summary", "") or "").replace("\n", " ").strip()
 
-            if len(summary) > max_summary_chars:
-                summary = summary[: max_summary_chars - 3] + "..."
+            # Enforce summary length cap
+            if len(summary) > safe_max_chars:
+                summary = summary[: safe_max_chars - 3] + "..."
 
             out_lines.append(
                 f"- {title}\n"
@@ -212,6 +231,9 @@ def build_news_tool(
             "Ignore definitional content.\n"
             "----\n"
         )
-        return header + "\n\n".join(out_lines)
+        output = header + "\n\n".join(out_lines)
+        
+        # Apply final output size limit
+        return enforce_tool_output_limits(output, "news_tool")
 
     return news_tool
