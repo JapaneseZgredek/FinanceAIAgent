@@ -1,5 +1,9 @@
 import logging
 import os
+import warnings
+
+# Suppress Pydantic serialization warnings from LiteLLM/CrewAI version mismatch
+warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
 
 from app.crew_runner import run
 from app.utils.errors import safe_run, ConfigurationError

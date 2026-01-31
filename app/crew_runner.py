@@ -16,10 +16,14 @@ from app.tools.news_tools import build_news_tool
 from app.tools.price_tools import build_price_tool
 from app.agents.build_agents import build_agents
 from app.tasks.build_tasks import build_tasks
+from app.utils.prompt_limits import validate_config_limits
 
 
 def run(symbol: str):
     validate_env()
+    
+    # Validate and log any config caps
+    validate_config_limits()
 
     llm = LLM(
         model=GROQ_MODEL,

@@ -1,4 +1,12 @@
+import logging
 from crewai.tools import tool
+
+from app.utils.prompt_limits import (
+    enforce_tool_output_limits,
+    ABSOLUTE_MAX_PRICE_HISTORY_LINES,
+)
+
+logger = logging.getLogger(__name__)
 
 
 def build_price_tool(alpha_client, *, window_days: int, last_n: int):
@@ -14,6 +22,11 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
         Example call: price_tool(ticker_symbol="BTC")
         """
         df = alpha_client.get_daily_prices(ticker_symbol)
+
+        # Enforce hard cap on price history lines
+        safe_last_n = min(last_n, ABSOLUTE_MAX_PRICE_HISTORY_LINES)
+        if safe_last_n < last_n:
+            logger.warning(f"PRICE_LAST_N capped from {last_n} to {safe_last_n}")
 
         # bierzemy okno do statystyk, ale nie wysyłamy całego do LLM
         dfw = df.tail(window_days).copy()
@@ -32,10 +45,10 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
         m30_df = df.tail(31)
         mom30 = (m30_df["price"].iloc[-1] / m30_df["price"].iloc[0] - 1.0) * 100.0 if len(m30_df) > 1 else 0.0
 
-        last_slice = df.tail(last_n)
+        last_slice = df.tail(safe_last_n)
         last_lines = "\n".join([f"{d.strftime('%Y-%m-%d')}: {row['price']:.2f}" for d, row in last_slice.iterrows()])
 
-        return (
+        output = (
             f"Ticker: {ticker_symbol}\n"
             f"Window: last {len(dfw)} days\n"
             f"Last price: {last:.2f}\n"
@@ -44,7 +57,10 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
             f"Volatility (daily std of returns): {vol:.2f}%\n"
             f"Momentum 7d: {mom7:.2f}%\n"
             f"Momentum 30d: {mom30:.2f}%\n"
-            f"Last {last_n} closes:\n{last_lines}"
+            f"Last {safe_last_n} closes:\n{last_lines}"
         )
+        
+        # Apply final output size limit
+        return enforce_tool_output_limits(output, "price_tool")
 
     return price_tool
