@@ -1,0 +1,161 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+
+  // =========================================================================
+  // PERMISSIONS
+  //
+  // Dwa rodzaje reguł:
+  //   "allow" — Claude może to zrobić bez pytania użytkownika o zgodę
+  //   "deny"  — Claude NIE MOŻE tego zrobić nawet jeśli użytkownik powie "tak"
+  //
+  // Kolejność ewaluacji: deny → ask → allow (deny zawsze wygrywa)
+  // Wzorce: "Tool(pattern)" — pattern dopasowywany do argumentu narzędzia
+  //   Bash: dopasowywany do treści komendy (spacja przed * = word boundary)
+  //   Read/Edit: gitignore-style glob na ścieżce pliku
+  // =========================================================================
+  "permissions": {
+
+    // -----------------------------------------------------------------------
+    // ALLOW — operacje bezpieczne, zatwierdzane automatycznie
+    // Kryterium: odwracalne, nie dotykają zdalnego repozytorium, nie niszczą
+    // -----------------------------------------------------------------------
+    "allow": [
+
+      // Git — operacje tylko do odczytu (zawsze bezpieczne)
+      "Bash(git status)",
+      "Bash(git diff *)",
+      "Bash(git log *)",
+      "Bash(git show *)",
+
+      // Git — zapis lokalny (odwracalne: commit można cofnąć przez revert)
+      "Bash(git add *)",
+      "Bash(git commit *)",
+      "Bash(git stash *)",
+      "Bash(git branch *)",
+      "Bash(git checkout *)",
+      "Bash(git fetch *)",
+      "Bash(git pull *)",
+      // git push BEZ --force jest OK — remote ma własną historię jako backup
+      "Bash(git push)",
+      "Bash(git push origin *)",
+
+      // Python — uruchamianie kodu i zarządzanie zależnościami
+      // Obie wersje: systemowa i z venv projektu
+      "Bash(python3 *)",
+      "Bash(.venv/bin/python3 *)",
+      "Bash(.venv/bin/pip *)",
+      "Bash(pip install *)",
+      "Bash(pip3 install *)",
+
+      // Dev tools — narzędzia używane w tym projekcie
+      "Bash(.venv/bin/black *)",
+      "Bash(.venv/bin/flake8 *)",
+      "Bash(.venv/bin/pytest *)",
+
+      // Filesystem — bezpieczne operacje plikowe
+      "Bash(ls *)",
+      "Bash(mkdir *)",
+      // chmod +x jest potrzebne żeby hooki były wykonywalne po git clone
+      "Bash(chmod +x *)"
+    ],
+
+    // -----------------------------------------------------------------------
+    // DENY — absolutne zakazy, Claude nie może ich wykonać nawet na prośbę
+    // Kryterium: nieodwracalne LUB dotyczą wrażliwych danych
+    // -----------------------------------------------------------------------
+    "deny": [
+
+      // Pliki z sekretami — .env zawiera klucze API (GROQ, EXA, ALPHAVANTAGE)
+      // Claude nie ma dostępu do tych wartości nawet "przypadkowo"
+      "Read(./.env)",
+      "Read(./.env.*)",
+
+      // git push --force — nadpisuje historię zdalną, nie do odrobienia
+      // Dodatkowa warstwa: hook block-dangerous-bash.sh też to blokuje
+      "Bash(git push --force*)",
+      "Bash(git push -f *)",
+
+      // rm -rf — rekursywne usunięcie bez potwierdzenia, nieodwracalne
+      "Bash(rm -rf *)",
+
+      // git reset --hard — niszczy WSZYSTKIE niezacommitowane zmiany
+      "Bash(git reset --hard*)",
+
+      // git clean — usuwa untracked files, nieodwracalne
+      "Bash(git clean -f*)"
+    ]
+  },
+
+  // =========================================================================
+  // HOOKS
+  //
+  // Hooki to zewnętrzne skrypty uruchamiane przez Claude Code w odpowiedzi
+  // na zdarzenia w cyklu życia sesji.
+  //
+  // Zdarzenia używane tutaj:
+  //   PreToolUse  — przed wykonaniem narzędzia (exit 2 = blokuje)
+  //   PostToolUse — po wykonaniu narzędzia (exit 2 = tylko informuje Claude)
+  //
+  // matcher — wyrażenie regularne dopasowywane do nazwy narzędzia
+  //   "Bash"       → tylko narzędzie Bash
+  //   "Write|Edit" → narzędzie Write LUB Edit (alternacja regex)
+  //
+  // Hooki otrzymują JSON przez stdin z detalami zdarzenia.
+  // Skrypty używają $CLAUDE_PROJECT_DIR żeby działały niezależnie od cwd.
+  // =========================================================================
+  "hooks": {
+
+    // -----------------------------------------------------------------------
+    // PostToolUse: Write | Edit
+    // Uruchamiane po każdej zmianie pliku — formatowanie i inspekcja kodu
+    // -----------------------------------------------------------------------
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+
+          // 1. Auto-formatowanie Pythonem (black)
+          // Cel: styl kodu jest zawsze spójny bez ręcznego uruchamiania blacka
+          // Działa cicho — Claude nie widzi wyniku jeśli nie ma błędów
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-python.sh",
+            "timeout": 30,
+            "statusMessage": "Formatowanie Python (black)..."
+          },
+
+          // 2. Detekcja print() zamiast loggera
+          // Cel: projekt używa modułu logging, nie print() — hook przypomina o tym
+          // Wynik trafia do stderr → Claude widzi ostrzeżenie i może zareagować
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-print-statements.sh",
+            "timeout": 10,
+            "statusMessage": "Sprawdzanie stylu kodu..."
+          }
+        ]
+      }
+    ],
+
+    // -----------------------------------------------------------------------
+    // PreToolUse: Bash
+    // Uruchamiane PRZED każdą komendą Bash — dodatkowa warstwa bezpieczeństwa
+    // exit 2 = komenda jest ZABLOKOWANA, Claude dostaje wyjaśnienie przez stderr
+    // -----------------------------------------------------------------------
+    "PreToolUse": [
+      {
+        "matcher": "Bash",
+        "hooks": [
+          // Blokada niebezpiecznych komend bash
+          // Uzupełnia listę "deny" w permissions — działa jak drugi poziom ochrony
+          // na wypadek gdyby jakaś wzorzec permissions nie pasował dokładnie
+          {
+            "type": "command",
+            "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/block-dangerous-bash.sh",
+            "timeout": 5
+          }
+        ]
+      }
+    ]
+  }
+}
