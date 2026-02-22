@@ -5,6 +5,7 @@ from app.utils.prompt_limits import (
     enforce_tool_output_limits,
     ABSOLUTE_MAX_PRICE_HISTORY_LINES,
 )
+from app.utils.indicators import calculate_all_indicators
 
 logger = logging.getLogger(__name__)
 
@@ -13,8 +14,8 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
     @tool("price_tool")
     def price_tool(ticker_symbol: str) -> str:
         """
-        Provide a compact statistical summary of recent cryptocurrency prices,
-        including volatility, momentum and recent closes.
+        Provide a comprehensive technical analysis of recent cryptocurrency prices,
+        including moving averages (SMA/EMA), RSI, MACD, volatility regime, and trend summary.
         
         Args:
             ticker_symbol: The cryptocurrency ticker symbol (e.g., "BTC", "ETH", "SOL")
@@ -28,7 +29,7 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
         if safe_last_n < last_n:
             logger.warning(f"PRICE_LAST_N capped from {last_n} to {safe_last_n}")
 
-        # bierzemy okno do statystyk, ale nie wysyłamy całego do LLM
+        # Basic stats for the analysis window
         dfw = df.tail(window_days).copy()
         dfw["ret"] = dfw["price"].pct_change()
 
@@ -38,27 +39,38 @@ def build_price_tool(alpha_client, *, window_days: int, last_n: int):
         vol = dfw["ret"].std() * 100.0
         hi, lo = dfw["price"].max(), dfw["price"].min()
 
-        # momentum
+        # Momentum (simple)
         m7_df = df.tail(8)
         mom7 = (m7_df["price"].iloc[-1] / m7_df["price"].iloc[0] - 1.0) * 100.0 if len(m7_df) > 1 else 0.0
 
         m30_df = df.tail(31)
         mom30 = (m30_df["price"].iloc[-1] / m30_df["price"].iloc[0] - 1.0) * 100.0 if len(m30_df) > 1 else 0.0
 
+        # Calculate technical indicators (SMA, EMA, RSI, MACD, ATR)
+        indicators = calculate_all_indicators(df)
+
+        # Recent closes
         last_slice = df.tail(safe_last_n)
         last_lines = "\n".join([f"{d.strftime('%Y-%m-%d')}: {row['price']:.2f}" for d, row in last_slice.iterrows()])
 
-        output = (
-            f"Ticker: {ticker_symbol}\n"
-            f"Window: last {len(dfw)} days\n"
-            f"Last price: {last:.2f}\n"
-            f"Change over window: {change_pct:.2f}%\n"
-            f"High/Low: {hi:.2f} / {lo:.2f}\n"
-            f"Volatility (daily std of returns): {vol:.2f}%\n"
-            f"Momentum 7d: {mom7:.2f}%\n"
-            f"Momentum 30d: {mom30:.2f}%\n"
-            f"Last {safe_last_n} closes:\n{last_lines}"
-        )
+        # Build output
+        output_parts = [
+            f"Ticker: {ticker_symbol}",
+            f"Window: last {len(dfw)} days",
+            f"Last price: {last:.2f}",
+            f"Change over window: {change_pct:.2f}%",
+            f"High/Low: {hi:.2f} / {lo:.2f}",
+            f"Volatility (daily std): {vol:.2f}%",
+            f"Momentum 7d: {mom7:.2f}%",
+            f"Momentum 30d: {mom30:.2f}%",
+            "",
+            indicators.format_for_llm(last),
+            "",
+            f"Last {safe_last_n} closes:",
+            last_lines,
+        ]
+        
+        output = "\n".join(output_parts)
         
         # Apply final output size limit
         return enforce_tool_output_limits(output, "price_tool")

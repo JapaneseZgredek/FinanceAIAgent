@@ -31,6 +31,9 @@ Finance_AI_Agent/
 ├── .env.example                    # Template for environment variables
 ├── README.md                       # This file
 │
+    ├── docs/                           # 📚 Documentation
+│   └── TECHNICAL_ANALYSIS.md       #    └── Technical indicators guide (SMA, RSI, MACD...)
+│
 ├── .cache/                         # 📦 Local cache (auto-created, gitignored)
 │   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
 │   └── exa_news/                   #    └── Cached news results (TTL: 10-30min)
@@ -49,7 +52,7 @@ Finance_AI_Agent/
     ├── tools/                      # 🔧 CrewAI tools (callable by agents)
     │   ├── __init__.py
     │   ├── news_tools.py           #    └── News fetching + deduplication + limits
-    │   └── price_tools.py          #    └── Price stats + momentum + limits
+    │   └── price_tools.py          #    └── Price stats + technical indicators
     │
     ├── agents/                     # 🤖 CrewAI agent definitions
     │   ├── __init__.py
@@ -63,7 +66,8 @@ Finance_AI_Agent/
         ├── __init__.py
         ├── retry.py                #    └── Exponential backoff decorator
         ├── errors.py               #    └── Custom exceptions + user-friendly messages
-        └── prompt_limits.py        #    └── Hard caps on LLM prompt size
+        ├── prompt_limits.py        #    └── Hard caps on LLM prompt size
+        └── indicators.py           #    └── Technical indicators (SMA, EMA, RSI, MACD, ATR)
 ```
 
 **Data flow:**
@@ -95,15 +99,35 @@ The news pipeline is designed to avoid low-signal pages (e.g., Wikipedia, "what 
 - optional **include domains** mode (whitelist for trusted publishers),
 - compact summaries to reduce LLM prompt size.
 
-### 3) Price analysis (compact, token-safe)
-Instead of sending long raw time series to the model, the price tool returns a compact summary:
-- window change (%),
-- high/low range,
-- volatility estimate,
-- 7d/30d momentum,
+### 3) Price analysis with technical indicators
+Instead of sending long raw time series to the model, the price tool returns a comprehensive technical analysis:
 
+**Basic Statistics:**
+- Window change (%)
+- High/Low range
+- Volatility (daily std of returns)
+- 7d/30d momentum
 
-This prevents "prompt bloat" and reduces Groq token usage.
+**Moving Averages:**
+- SMA (20, 50, 200) — Simple Moving Averages
+- EMA (20, 50, 200) — Exponential Moving Averages
+- Price position vs MAs (above/below)
+
+**Momentum Indicators:**
+- RSI (14) — Relative Strength Index with interpretation (overbought/oversold/neutral)
+- MACD — Moving Average Convergence Divergence (line, signal, histogram, trend)
+
+**Volatility Analysis:**
+- ATR (14) — Average True Range (approximated from close prices)
+- ATR% — Normalized volatility as percentage of price
+- Volatility regime classification (LOW / NORMAL / HIGH / EXTREME)
+
+**Trend Summary:**
+Automated assessment combining all signals into BULLISH / BEARISH / NEUTRAL with explanation.
+
+This prevents "prompt bloat" while providing rich technical context for the LLM.
+
+> 📖 **Deep dive:** See [docs/TECHNICAL_ANALYSIS.md](docs/TECHNICAL_ANALYSIS.md) for detailed formulas, calculations, and interpretation guide.
 
 ### 4) Multi-agent sequential report generation (CrewAI)
 The Crew runs sequentially:
@@ -238,7 +262,7 @@ Below is a prioritized list of improvements to grow this PoC into a production-r
    - Extract "topic fingerprint" from title/summary.
    - *Implemented: `_extract_topic_fingerprint()` in `news_tools.py`*
 
-8. ⬚ **Prevent oversized LLM prompts automatically**
+8. ✅ **Prevent oversized LLM prompts automatically**
    - Enforce hard caps on:
      - number of news articles
      - summary length
@@ -249,12 +273,13 @@ Below is a prioritized list of improvements to grow this PoC into a production-r
 
 ### Phase 2 — Stronger Analytics & Better Reports
 
-9. ⬚ **Add technical indicators for price analysis**
+9. ✅ **Add technical indicators for price analysis**
    - SMA/EMA (20/50/200)
    - RSI (14)
    - MACD
    - ATR / volatility regimes
    - Provide these metrics to the price analyst agent.
+   - **Implemented:** `app/utils/indicators.py` with full technical analysis suite. Integrated into `price_tools.py`. Output includes trend summary combining all signals.
 
 10. ⬚ **Add trend classification**
     - Define rules like:
