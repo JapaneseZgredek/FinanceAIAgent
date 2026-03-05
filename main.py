@@ -1,11 +1,7 @@
 import logging
 import os
-import warnings
 
-# Suppress Pydantic serialization warnings from LiteLLM/CrewAI version mismatch
-warnings.filterwarnings("ignore", category=UserWarning, module="pydantic")
-
-from app.crew_runner import run
+from app.claude_runner import run
 from app.utils.errors import safe_run, ConfigurationError
 
 # Configure logging to show INFO level for our app
@@ -17,7 +13,6 @@ logging.basicConfig(
 # Suppress noisy loggers from dependencies
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
-logging.getLogger("litellm").setLevel(logging.WARNING)
 
 # Enable debug mode via environment variable
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")

@@ -91,7 +91,7 @@ ERROR_PATTERNS = [
         "patterns": ["model", "decommissioned", "not found", "does not exist"],
         "error_class": ConfigurationError,
         "message": "LLM model not available",
-        "hint": "Update GROQ_MODEL in .env to a valid model (e.g., groq/llama-3.3-70b-versatile).",
+        "hint": "Update CLAUDE_MODEL in .env to a valid model (e.g., claude-opus-4-6).",
     },
     # Invalid ticker
     {
