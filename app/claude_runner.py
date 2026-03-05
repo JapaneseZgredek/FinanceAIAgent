@@ -29,18 +29,26 @@ _NEWS_CACHE_DIR = os.path.join(config.CACHE_DIR, "claude_news")
 _CLAUDE_TIMEOUT = 180  # seconds per subprocess call
 
 
-def run(symbol: str) -> str:
+def run(symbol: str, language: str = "Polish") -> str:
     """
     Run the full analysis pipeline for a cryptocurrency symbol.
 
     Steps:
       0. Fetch price data + calculate technical indicators locally (no LLM)
-      1. News search via Claude CLI + WebSearch
-      2. Technical price analysis via Claude CLI (no web access)
-      3. Final report via Claude CLI (no web access)
+      1. News search via Claude CLI + WebSearch  (always English — internal)
+      2. Technical price analysis via Claude CLI  (always English — internal)
+      3. Final report via Claude CLI              (output in `language`)
+
+    Steps 1 and 2 are intermediate data fed back into Claude — the user never
+    sees them. Keeping them in English gives Claude the best reasoning quality.
+    Only Step 3 (what the user actually reads) is rendered in the chosen language.
 
     Args:
         symbol: Cryptocurrency ticker (e.g., "BTC", "ETH", "SOL")
+        language: Output language for the final report (e.g., "Polish",
+                  "English", "Spanish"). Passed per-request so callers —
+                  including a future FastAPI frontend — can set it dynamically
+                  without restarting the server.
 
     Returns:
         Formatted market report as a string.
@@ -49,7 +57,7 @@ def run(symbol: str) -> str:
         FinanceAgentError: If any step fails and cannot be recovered.
     """
     symbol = symbol.upper().strip()
-    logger.info("Starting analysis for %s", symbol)
+    logger.info("Starting analysis for %s (output language: %s)", symbol, language)
 
     config.validate_env()
 
@@ -59,14 +67,14 @@ def run(symbol: str) -> str:
         alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N
     )
 
-    # Step 1: news search via Claude CLI + built-in WebSearch (cached)
+    # Step 1: news search — always English (intermediate, never shown to user)
     news_analysis = _get_news_analysis(symbol)
 
-    # Step 2: technical price analysis via Claude CLI (pure reasoning, no web)
+    # Step 2: price analysis — always English (intermediate, never shown to user)
     price_analysis = _get_price_analysis(symbol, price_data)
 
-    # Step 3: final report via Claude CLI (synthesises news + price analysis)
-    return _get_final_report(symbol, news_analysis, price_analysis)
+    # Step 3: final report — rendered in the requested language
+    return _get_final_report(symbol, news_analysis, price_analysis, language)
 
 
 # =============================================================================
@@ -129,15 +137,17 @@ def _run_claude(prompt: str, allowed_tools: str = "") -> str:
 
 def _get_news_analysis(symbol: str) -> str:
     """
-    Pobiera aktualne newsy dla symbolu przez Claude CLI z WebSearch. (Wywołanie 1 z 3)
+    Fetch recent news for the symbol via Claude CLI + WebSearch. (Call 1 of 3)
 
-    Wyniki są cachowane per symbol + godzina, żeby uniknąć zbędnych wyszukiwań.
+    Always returns English — this output is fed into Claude in Step 3, not
+    shown to the user. Keeping it in English maximises reasoning quality.
+    Results are cached per symbol + hour to avoid redundant web searches.
 
     Args:
-        symbol: Symbol kryptowaluty.
+        symbol: Cryptocurrency ticker.
 
     Returns:
-        Sformatowany string z analizą newsów po polsku.
+        Formatted string with market events, sentiment, and news forecast (English).
     """
     cache = CacheManager.with_ttl_minutes(_NEWS_CACHE_DIR, config.CLAUDE_NEWS_CACHE_TTL_MINUTES)
     cache_key = f"claude_news_{symbol}_{datetime.now().strftime('%Y-%m-%d-%H')}"
@@ -150,22 +160,22 @@ def _get_news_analysis(symbol: str) -> str:
     logger.info("Fetching fresh news for %s via Claude CLI web search", symbol)
     today = datetime.now().strftime("%Y-%m-%d")
     prompt = (
-        f"Przeszukaj internet w poszukiwaniu wiadomości o kryptowalucie {symbol} z ostatnich {config.NEWS_DAYS_BACK} dni. "
-        f"Skup się WYŁĄCZNIE na wydarzeniach wpływających na rynek: działania regulacyjne, duże partnerstwa, listingi na giełdach, "
-        f"napływy/odpływy ETF, włamania na giełdy, zdarzenia makro (Fed, CPI) wpływające na ceny kryptowalut. "
-        f"Pomiń: artykuły edukacyjne, prognozy cenowe bez katalizatorów, ogólne wyjaśnienia.\n\n"
-        f"Zwróć dokładnie w tym formacie:\n"
-        f"## Wydarzenia Rynkowe\n"
-        f"- [opis wydarzenia] (Źródło: domena.com, Data: {today})\n"
-        f"(tylko 3-5 punktów)\n\n"
-        f"## Sentyment\n"
-        f"Pozytywny / Negatywny / Mieszany — jedno zdanie wyjaśnienia.\n\n"
-        f"## Prognoza Newsów\n"
-        f"WZROST / SPADEK / NEUTRALNIE — jedno zdanie uzasadnienia.\n\n"
-        f"Odpowiedz w języku polskim."
+        f"Search the web for news about the {symbol} cryptocurrency from the last {config.NEWS_DAYS_BACK} days. "
+        f"Focus ONLY on market-moving events: regulatory actions, major partnerships, exchange listings, "
+        f"ETF inflows/outflows, exchange hacks, macro events (Fed, CPI) affecting crypto prices. "
+        f"Skip: educational articles, price predictions without catalysts, general explanations.\n\n"
+        f"Return exactly in this format:\n"
+        f"## Market Events\n"
+        f"- [event description] (Source: domain.com, Date: {today})\n"
+        f"(3-5 bullet points only)\n\n"
+        f"## Sentiment\n"
+        f"Positive / Negative / Mixed — one sentence explanation.\n\n"
+        f"## News Forecast\n"
+        f"UP / DOWN / NEUTRAL — one sentence rationale.\n\n"
+        f"Respond in English."
     )
 
-    # WebSearch i WebFetch tylko dla tego kroku — tylko on potrzebuje dostępu do internetu
+    # WebSearch and WebFetch only for this step — the only one that needs web access
     analysis = _run_claude(prompt, allowed_tools="WebSearch,WebFetch")
     cache.set(cache_key, {"analysis": analysis})
     return analysis
@@ -173,64 +183,66 @@ def _get_news_analysis(symbol: str) -> str:
 
 def _get_price_analysis(symbol: str, price_data: str) -> str:
     """
-    Analiza techniczna danych cenowych przez Claude CLI. (Wywołanie 2 z 3)
+    Technical analysis of price data via Claude CLI. (Call 2 of 3)
 
-    Brak dostępu do internetu — Claude operuje wyłącznie na dostarczonych danych wskaźników.
+    Always returns English — this output is fed into Claude in Step 3, not
+    shown to the user. No web access; Claude works only on the provided data.
 
     Args:
-        symbol: Symbol kryptowaluty.
-        price_data: Sformatowany string z cenami i wskaźnikami z get_formatted_price_data().
+        symbol: Cryptocurrency ticker.
+        price_data: Formatted string with prices and indicators from get_formatted_price_data().
 
     Returns:
-        Akapit analizy technicznej kończący się linią
-        "Prognoza: WZROST / SPADEK / NEUTRALNIE — [uzasadnienie]".
+        Technical analysis paragraph ending with a single forecast line (English).
     """
     logger.info("Running price analysis for %s", symbol)
     prompt = (
-        f"Jesteś ilościowym analitykiem kryptowalut. "
-        f"Przeanalizuj poniższe dane wskaźników technicznych dla {symbol}.\n\n"
-        f"=== DANE CENOWE I WSKAŹNIKI ===\n{price_data}\n\n"
-        f"Napisz analizę w 1 akapicie obejmującą: kierunek trendu, momentum (RSI, MACD), "
-        f"reżim zmienności oraz kluczowe poziomy wsparcia/oporu ze średnich kroczących. "
-        f"Zakończ dokładnie jedną linią:\n"
-        f"Prognoza: WZROST / SPADEK / NEUTRALNIE — [jedno zdanie uzasadnienia]\n\n"
-        f"NIE przeszukuj internetu. Używaj wyłącznie dostarczonych danych. Odpowiedz w języku polskim."
+        f"You are a quantitative cryptocurrency analyst. "
+        f"Analyze the following technical indicator data for {symbol}.\n\n"
+        f"=== PRICE DATA AND INDICATORS ===\n{price_data}\n\n"
+        f"Write a 1-paragraph analysis covering: trend direction, momentum (RSI, MACD), "
+        f"volatility regime, and key support/resistance levels from moving averages. "
+        f"End with exactly one line:\n"
+        f"Forecast: UP / DOWN / NEUTRAL — [one sentence rationale]\n\n"
+        f"Do NOT search the web. Use only the provided data. Respond in English."
     )
     return _run_claude(prompt)
 
 
-def _get_final_report(symbol: str, news_analysis: str, price_analysis: str) -> str:
+def _get_final_report(symbol: str, news_analysis: str, price_analysis: str, language: str) -> str:
     """
-    Syntezuje analizę newsów i cenową w finalny raport rynkowy. (Wywołanie 3 z 3)
+    Synthesise news and price analysis into the final market report. (Call 3 of 3)
 
-    Brak dostępu do internetu — Claude łączy dwie dostarczone analizy.
+    This is the only step whose output is shown to the user, so it renders in
+    the requested language. No web access — Claude combines the two provided analyses.
 
     Args:
-        symbol: Symbol kryptowaluty.
-        news_analysis: Wyjście z _get_news_analysis().
-        price_analysis: Wyjście z _get_price_analysis().
+        symbol: Cryptocurrency ticker.
+        news_analysis: Output from _get_news_analysis() (English).
+        price_analysis: Output from _get_price_analysis() (English).
+        language: Output language for the report (e.g., "Polish", "English", "Spanish").
 
     Returns:
-        Sformatowany raport rynkowy po polsku.
+        Formatted market report string in the requested language.
     """
     logger.info("Generating final report for %s", symbol)
     today = datetime.now().strftime("%Y-%m-%d")
     prompt = (
-        f"Jesteś profesjonalnym autorem raportów kryptowalutowych. "
-        f"Połącz poniższe dwie analizy w finalny, zwięzły raport dla {symbol}.\n\n"
-        f"=== ANALIZA NEWSÓW ===\n{news_analysis}\n\n"
-        f"=== TECHNICZNA ANALIZA CENOWA ===\n{price_analysis}\n\n"
-        f"Format wyjściowy (zachuj dokładnie):\n\n"
-        f"## Raport Rynkowy {symbol} — {today}\n\n"
-        f"**Podsumowanie**\n"
-        f"- (punkt 1: kluczowy katalizator newsowy)\n"
-        f"- (punkt 2: kluczowy sygnał techniczny)\n"
-        f"- (punkt 3: łączna perspektywa — maksymalnie 3 punkty)\n\n"
-        f"**Analiza**\n"
-        f"(1 akapit, maksymalnie 6 zdań. Zintegruj sentyment newsów ze wskaźnikami technicznymi.)\n\n"
-        f"**Prognoza: WZROST / SPADEK / NEUTRALNIE**\n"
-        f"(1 zdanie powołujące się na 2 najsilniejsze sygnały z obu analiz.)\n\n"
-        f"*To nie jest porada finansowa.*\n\n"
-        f"NIE przeszukuj internetu. Używaj wyłącznie dostarczonych analiz. Odpowiedz w języku polskim."
+        f"You are a professional cryptocurrency report writer. "
+        f"Combine the two analyses below into a final, concise report for {symbol}.\n\n"
+        f"=== NEWS ANALYSIS ===\n{news_analysis}\n\n"
+        f"=== TECHNICAL PRICE ANALYSIS ===\n{price_analysis}\n\n"
+        f"Output format (translate all section headers and labels to {language}):\n\n"
+        f"## Market Report {symbol} — {today}\n\n"
+        f"**Summary**\n"
+        f"- (point 1: key news catalyst)\n"
+        f"- (point 2: key technical signal)\n"
+        f"- (point 3: combined outlook — 3 points maximum)\n\n"
+        f"**Analysis**\n"
+        f"(1 paragraph, 6 sentences maximum. Integrate news sentiment with technical indicators.)\n\n"
+        f"**Forecast: UP / DOWN / NEUTRAL**\n"
+        f"(1 sentence referencing the 2 strongest signals from both analyses.)\n\n"
+        f"*This is not financial advice.*\n\n"
+        f"Do NOT search the web. Use only the provided analyses. Respond in {language}."
     )
     return _run_claude(prompt)

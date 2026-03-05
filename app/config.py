@@ -104,6 +104,15 @@ ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
 
 CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-6")
 
+# Default output language for the final report. Used only as a CLI fallback —
+# frontends should pass the language explicitly via run() per request.
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "Polish")
+
+# Default language for report output. Used only as a fallback when no language
+# is passed at call time (e.g. CLI default). Frontends should pass the language
+# explicitly via the run() parameter — do not rely on this value at runtime.
+DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "Polish")
+
 # =============================================================================
 # News Settings (with validation)
 # =============================================================================
