@@ -62,9 +62,12 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - Frontends pass `language` per-request to `run()` — no server restart needed.
     - *`app/claude_runner.py`, `app/config.py`, `main.py`*
 
-12. ⬚ **News source ranking**
-    - Score domains by trust level (Reuters > random blog).
-    - Drop low-quality sources, prefer multi-source confirmation.
+12. ✅ **News source ranking**
+    - Three-tier domain classification: Tier 1 (high trust), Tier 2 (supplementary), Blocked (never use).
+    - Step 1 prompt builds `site:` operator queries dynamically from Python lists; Tier 2 consulted only when Tier 1 < 3 events.
+    - Mandatory verification rules injected into prompt: freshness, domain credibility, catalyst specificity, cross-source corroboration.
+    - Single-source events marked `(unconfirmed — single source)` in output.
+    - *`app/claude_runner.py` — `_NEWS_SOURCES_TIER1/2/BLOCKED`, `_get_news_analysis()`*
 
 13. ⬚ **Macro context inputs**
     - Optional: DXY (USD index), S&P 500 trend, CPI / Fed announcements.

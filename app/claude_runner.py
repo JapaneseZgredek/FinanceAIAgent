@@ -28,6 +28,43 @@ logger = logging.getLogger(__name__)
 _NEWS_CACHE_DIR = os.path.join(config.CACHE_DIR, "claude_news")
 _CLAUDE_TIMEOUT = 180  # seconds per subprocess call
 
+# ---------------------------------------------------------------------------
+# News source ranking — used in Step 1 prompt to guide WebSearch behaviour
+# ---------------------------------------------------------------------------
+
+# Tier 1 — high-quality, analyst-attributed content with verifiable data.
+# Use site: operator first; these should cover the bulk of searches.
+_NEWS_SOURCES_TIER1 = [
+    "coindesk.com",          # news + market analysis, named analysts, macro context
+    "cointelegraph.com",     # ETF flows (Farside data), on-chain metrics, multi-asset
+    "cryptoslate.com",       # real-time data, sentiment scoring, sector categorisation
+    "insights.glassnode.com",# on-chain analytics: SOPR, MVRV, Realized Price (BTC-focused)
+]
+
+# Tier 2 — useful supplementary sources; treat with moderate scepticism.
+# Cross-check any claim from these against a Tier 1 source before including it.
+_NEWS_SOURCES_TIER2 = [
+    "decrypt.co",            # fast event tracking, liquidation data (CoinGlass-sourced)
+    "coinmarketcap.com",     # aggregated analyst forecasts, TVL, institutional data
+    "beincrypto.com",        # daily coverage of all coins; weaker analytical depth
+    "ambcrypto.com",         # often surfaces for altcoins; JS-heavy, harder to parse
+    "finance.yahoo.com",     # institutional analyst reports (Standard Chartered, Bernstein)
+]
+
+# Tier 3 — NEVER use as a source.
+# These sites publish AI-generated price-prediction spam with zero analytical value.
+# They contaminate search results but contain no market-moving information.
+_NEWS_SOURCES_BLOCKED = [
+    "changelly.com",
+    "coincodex.com",
+    "digitalcoinprice.com",
+    "investinghaven.com",
+    "nftplazas.com",
+    "coindcx.com",           # /blog/price-predictions/* path specifically
+    "bitcoinethereumnews.com",
+    "spotedcrypto.com",
+]
+
 
 def run(symbol: str, language: str = "Polish") -> str:
     """
@@ -159,14 +196,52 @@ def _get_news_analysis(symbol: str) -> str:
 
     logger.info("Fetching fresh news for %s via Claude CLI web search", symbol)
     today = datetime.now().strftime("%Y-%m-%d")
+
+    tier1_site_query = " OR ".join(f"site:{d}" for d in _NEWS_SOURCES_TIER1)
+    tier2_site_query = " OR ".join(f"site:{d}" for d in _NEWS_SOURCES_TIER2)
+    blocked_domains = ", ".join(_NEWS_SOURCES_BLOCKED)
+
     prompt = (
-        f"Search the web for news about the {symbol} cryptocurrency from the last {config.NEWS_DAYS_BACK} days. "
-        f"Focus ONLY on market-moving events: regulatory actions, major partnerships, exchange listings, "
-        f"ETF inflows/outflows, exchange hacks, macro events (Fed, CPI) affecting crypto prices. "
+        f"Today is {today}. Search the web for recent news about the {symbol} cryptocurrency "
+        f"from the last {config.NEWS_DAYS_BACK} days.\n\n"
+
+        f"=== SEARCH STRATEGY ===\n"
+        f"Execute searches in this order:\n"
+        f"1. Primary search (Tier 1 sources only):\n"
+        f'   Query: "{symbol} cryptocurrency news" ({tier1_site_query})\n'
+        f"2. Supplementary search (Tier 2 sources) ONLY if Tier 1 yields fewer than 3 relevant events:\n"
+        f'   Query: "{symbol} crypto news" ({tier2_site_query})\n\n'
+
+        f"=== SOURCE RELIABILITY RULES ===\n"
+        f"TIER 1 — HIGH TRUST: {', '.join(_NEWS_SOURCES_TIER1)}\n"
+        f"  These sites provide analyst-attributed content with verifiable data. Prefer these.\n\n"
+        f"TIER 2 — MODERATE TRUST: {', '.join(_NEWS_SOURCES_TIER2)}\n"
+        f"  Use only as supplementary. MANDATORY: cross-check any Tier 2 claim against a Tier 1 source.\n"
+        f"  If a Tier 2 article cannot be corroborated, do NOT include the claim.\n\n"
+        f"BLOCKED — NEVER USE: {blocked_domains}\n"
+        f"  These domains publish AI-generated price-prediction content with zero analytical value.\n"
+        f"  Discard any result from these domains immediately, regardless of headline.\n\n"
+
+        f"=== CRITICAL VERIFICATION REQUIREMENTS ===\n"
+        f"Before including any piece of information you MUST verify:\n"
+        f"  1. FRESHNESS: Check the article publication date. Only include events from the last "
+        f"{config.NEWS_DAYS_BACK} days (after {today} minus {config.NEWS_DAYS_BACK} days).\n"
+        f"     Reject any article without a visible publication date.\n"
+        f"  2. SOURCE CREDIBILITY: Confirm the domain matches a Tier 1 or Tier 2 entry above.\n"
+        f"     Do not trust a site just because it appears in search results.\n"
+        f"  3. SPECIFICITY: The event must name a concrete catalyst (a regulator, institution, "
+        f"fund, or protocol). Vague headlines like 'Bitcoin may rise' are not market-moving events.\n"
+        f"  4. CORROBORATION: If only one source reports an event, mark it as "
+        f"'(unconfirmed — single source)' in your output.\n\n"
+
+        f"=== FOCUS ===\n"
+        f"Include ONLY market-moving events: regulatory actions, major partnerships, exchange listings, "
+        f"ETF inflows/outflows, protocol upgrades, exchange hacks, macro events (Fed, CPI, tariffs).\n"
         f"Skip: educational articles, price predictions without catalysts, general explanations.\n\n"
-        f"Return exactly in this format:\n"
+
+        f"=== OUTPUT FORMAT ===\n"
         f"## Market Events\n"
-        f"- [event description] (Source: domain.com, Date: {today})\n"
+        f"- [event description] (Source: domain.com, Date: YYYY-MM-DD, Tier: 1|2)\n"
         f"(3-5 bullet points only)\n\n"
         f"## Sentiment\n"
         f"Positive / Negative / Mixed — one sentence explanation.\n\n"

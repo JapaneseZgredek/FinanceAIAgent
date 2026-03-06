@@ -93,11 +93,15 @@ User Input (BTC) → main.py → crew_runner.py
 
 
 ### 2) News retrieval focused on "recent market events"
-The news pipeline is designed to avoid low-signal pages (e.g., Wikipedia, "what is Bitcoin", trackers) by using:
-- a **recency window** (e.g., last 7 days),
-- **excluded domains** (blacklist),
-- optional **include domains** mode (whitelist for trusted publishers),
-- compact summaries to reduce LLM prompt size.
+The news pipeline filters signal from noise using a three-tier source ranking system:
+
+- **Tier 1 (high trust)** — `coindesk.com`, `cointelegraph.com`, `cryptoslate.com`, `insights.glassnode.com`. Claude searches these first using the `site:` operator.
+- **Tier 2 (supplementary)** — `decrypt.co`, `coinmarketcap.com`, `beincrypto.com`, `ambcrypto.com`, `finance.yahoo.com`. Only consulted when Tier 1 yields fewer than 3 events; every Tier 2 claim must be cross-checked against a Tier 1 source before inclusion.
+- **Blocked** — a hardcoded list of domains that publish AI-generated price-prediction spam (`changelly.com`, `coincodex.com`, `digitalcoinprice.com`, and others). Results from these are discarded immediately regardless of headline.
+
+The prompt also enforces four mandatory verification checks: article freshness (must be within the configured news window), domain credibility match, concrete catalyst specificity, and multi-source corroboration (single-source claims are marked as unconfirmed).
+
+All source lists live as Python constants (`_NEWS_SOURCES_TIER1/2/BLOCKED`) in `app/claude_runner.py` — adding or removing a domain requires a one-line change that propagates to the prompt automatically.
 
 ### 3) Price analysis with technical indicators
 Instead of sending long raw time series to the model, the price tool returns a comprehensive technical analysis:
