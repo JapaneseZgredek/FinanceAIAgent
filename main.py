@@ -34,6 +34,8 @@ def analyze_symbol(symbol: str, language: str):
 
 
 def main():
+    safe_run(config.validate_env, debug=DEBUG_MODE)
+
     print("=" * 50)
     print("  🪙 Finance AI Agent - Crypto Analyzer")
     print("=" * 50)

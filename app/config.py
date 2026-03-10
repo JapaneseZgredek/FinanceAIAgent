@@ -108,11 +108,6 @@ CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-opus-4-6")
 # frontends should pass the language explicitly via run() per request.
 DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "Polish")
 
-# Default language for report output. Used only as a fallback when no language
-# is passed at call time (e.g. CLI default). Frontends should pass the language
-# explicitly via the run() parameter — do not rely on this value at runtime.
-DEFAULT_LANGUAGE = os.getenv("DEFAULT_LANGUAGE", "Polish")
-
 # =============================================================================
 # News Settings (with validation)
 # =============================================================================
@@ -133,6 +128,45 @@ PRICE_LAST_N = _get_int("PRICE_LAST_N", default=10, min_val=1, max_val=30)
 CACHE_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), ".cache")
 CACHE_TTL_HOURS = _get_float("CACHE_TTL_HOURS", default=4.0, min_val=0.5, max_val=24.0)
 CLAUDE_NEWS_CACHE_TTL_MINUTES = _get_float("CLAUDE_NEWS_CACHE_TTL_MINUTES", default=30.0, min_val=5.0, max_val=120.0)
+
+
+# =============================================================================
+# News Source Configuration
+# These are curated domain lists — edit here to add/remove sources.
+# Not controllable via env vars: source quality is a code-level decision.
+# =============================================================================
+
+# Tier 1 — high-quality, analyst-attributed content with verifiable data.
+# Used first via site: operator queries; should cover the bulk of searches.
+NEWS_SOURCES_TIER1: list[str] = [
+    "coindesk.com",           # news + market analysis, named analysts, macro context
+    "cointelegraph.com",      # ETF flows (Farside data), on-chain metrics, multi-asset
+    "cryptoslate.com",        # real-time data, sentiment scoring, sector categorisation
+    "insights.glassnode.com", # on-chain analytics: SOPR, MVRV, Realized Price (BTC-focused)
+]
+
+# Tier 2 — supplementary sources; treat with moderate scepticism.
+# Cross-check any claim from these against a Tier 1 source before including it.
+NEWS_SOURCES_TIER2: list[str] = [
+    "decrypt.co",           # fast event tracking, liquidation data (CoinGlass-sourced)
+    "coinmarketcap.com",    # aggregated analyst forecasts, TVL, institutional data
+    "beincrypto.com",       # daily coverage of all coins; weaker analytical depth
+    "ambcrypto.com",        # often surfaces for altcoins; JS-heavy, harder to parse
+    "finance.yahoo.com",    # institutional analyst reports (Standard Chartered, Bernstein)
+]
+
+# Blocked — NEVER use as a source.
+# These publish AI-generated price-prediction spam with zero analytical value.
+NEWS_SOURCES_BLOCKED: list[str] = [
+    "changelly.com",
+    "coincodex.com",
+    "digitalcoinprice.com",
+    "investinghaven.com",
+    "nftplazas.com",
+    "coindcx.com",            # /blog/price-predictions/* path specifically
+    "bitcoinethereumnews.com",
+    "spotedcrypto.com",
+]
 
 
 def validate_env() -> None:

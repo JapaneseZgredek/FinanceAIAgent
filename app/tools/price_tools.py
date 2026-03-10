@@ -1,11 +1,12 @@
 import logging
 
+from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.utils.indicators import calculate_all_indicators
 
 logger = logging.getLogger(__name__)
 
 
-def get_formatted_price_data(alpha_client, symbol: str, window_days: int, last_n: int) -> str:
+def get_formatted_price_data(alpha_client: AlphaVantageClient, symbol: str, window_days: int, last_n: int) -> str:
     """
     Fetch price data and return a formatted string with technical indicators.
 
