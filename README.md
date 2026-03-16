@@ -1,9 +1,9 @@
 # Finance AI Agent
 
-A modular Python project that generates a short cryptocurrency market report by combining:
-- **recent news** (Exa API),
-- **historical price data** (Alpha Vantage),
-- **LLM-based analysis** orchestrated with **CrewAI** using **Groq** models (via LiteLLM).
+A Python-based cryptocurrency market analysis system that generates structured reports by combining:
+- **recent news** (Claude's built-in WebSearch + WebFetch),
+- **historical price data** (Alpha Vantage API),
+- **LLM-based analysis** via Claude Code CLI (`claude --print` subprocesses).
 
 > This project is **not** financial advice.
 
@@ -11,14 +11,14 @@ A modular Python project that generates a short cryptocurrency market report by 
 
 ## What's implemented
 
-### 1) Modular architecture
+### 1) Modular async architecture
 Code is split into clear layers:
 
-- **clients**: API integrations (Exa, Alpha Vantage)
-- **tools**: CrewAI tools wrapping client calls (news + price)
-- **agents**: agent definitions (news analyst, price analyst, writer)
-- **tasks**: task definitions and prompt formats
-- **runner**: wiring everything together and executing the Crew sequentially
+- **clients**: API integrations (Alpha Vantage + async Claude CLI wrapper)
+- **tools**: Local data preparation (price stats + technical indicators)
+- **prompts**: Prompt builders for each pipeline step
+- **runner**: Async orchestrator — Steps 1 and 2 run concurrently via `asyncio.gather`
+- **utils**: Retry, error handling, technical indicators
 
 Project structure:
 
@@ -31,64 +31,56 @@ Finance_AI_Agent/
 ├── .env.example                    # Template for environment variables
 ├── README.md                       # This file
 │
-    ├── docs/                           # 📚 Documentation
-│   └── TECHNICAL_ANALYSIS.md       #    └── Technical indicators guide (SMA, RSI, MACD...)
+├── docs/                           # 📚 Documentation
+│   ├── TECHNICAL_ANALYSIS.md       #    └── Technical indicators guide (SMA, RSI, MACD...)
+│   └── ROADMAP.md                  #    └── Prioritized feature roadmap
 │
 ├── .cache/                         # 📦 Local cache (auto-created, gitignored)
 │   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
-│   └── exa_news/                   #    └── Cached news results (TTL: 10-30min)
+│   └── claude_news/                #    └── Cached news results (TTL: 30min)
 │
 └── app/                            # 📁 Main application package
     ├── __init__.py
     ├── config.py                   # ⚙️  Configuration loader + validation
-    ├── crew_runner.py              # 🎯 CrewAI orchestration (agents + tasks)
+    ├── claude_runner.py            # 🎯 Async pipeline orchestrator (3 Claude CLI calls)
+    ├── prompts.py                  # 📝 Prompt builders for each pipeline step
     │
     ├── clients/                    # 🌐 External API clients
-    │   ├── __init__.py
     │   ├── cache.py                #    └── Generic file-based cache (TTL support)
     │   ├── alpha_vantage_client.py #    └── Price data API (with caching + retry)
-    │   └── exa_client.py           #    └── News search API (with caching + retry)
+    │   └── claude_client.py        #    └── Async Claude CLI subprocess wrapper
     │
-    ├── tools/                      # 🔧 CrewAI tools (callable by agents)
-    │   ├── __init__.py
-    │   ├── news_tools.py           #    └── News fetching + deduplication + limits
+    ├── tools/                      # 🔧 Data preparation
     │   └── price_tools.py          #    └── Price stats + technical indicators
-    │
-    ├── agents/                     # 🤖 CrewAI agent definitions
-    │   ├── __init__.py
-    │   └── build_agents.py         #    └── News analyst + Price analyst + Writer
-    │
-    ├── tasks/                      # 📋 CrewAI task definitions
-    │   ├── __init__.py
-    │   └── build_tasks.py          #    └── Task prompts + expected outputs
     │
     └── utils/                      # 🛠️  Shared utilities
         ├── __init__.py
         ├── retry.py                #    └── Exponential backoff decorator
         ├── errors.py               #    └── Custom exceptions + user-friendly messages
-        ├── prompt_limits.py        #    └── Hard caps on LLM prompt size
         └── indicators.py           #    └── Technical indicators (SMA, EMA, RSI, MACD, ATR)
 ```
 
 **Data flow:**
 ```
-User Input (BTC) → main.py → crew_runner.py
-                                   │
-                    ┌──────────────┼──────────────┐
-                    ▼              ▼              ▼
-              news_tool      price_tool      LLM (Groq)
-                    │              │              │
-                    ▼              ▼              │
-              exa_client   alpha_vantage_client  │
-                    │              │              │
-                    └──────┬───────┘              │
-                           ▼                      │
-                    .cache/ (local)               │
-                           │                      │
-                           └──────────────────────┘
-                                   │
-                                   ▼
-                          Final Report (stdout)
+User Input (BTC) → main.py → asyncio.run(claude_runner.run())
+                                     │
+                     Step 0: Alpha Vantage + local indicators
+                             (asyncio.to_thread, no LLM)
+                                     │
+                    ┌────────────────┴─────────────────┐
+                    ▼  asyncio.gather (concurrent)      ▼
+             Step 1: Claude CLI                 Step 2: Claude CLI
+             WebSearch + WebFetch               price analysis
+             (news search)                      (no web access)
+                    │                                   │
+                    └────────────────┬──────────────────┘
+                                     ▼
+                             Step 3: Claude CLI
+                             final report synthesis
+                             (rendered in chosen language)
+                                     │
+                                     ▼
+                            Final Report (stdout)
 ```
 
 
@@ -133,21 +125,23 @@ This prevents "prompt bloat" while providing rich technical context for the LLM.
 
 > 📖 **Deep dive:** See [docs/TECHNICAL_ANALYSIS.md](docs/TECHNICAL_ANALYSIS.md) for detailed formulas, calculations, and interpretation guide.
 
-### 4) Multi-agent sequential report generation (CrewAI)
-The Crew runs sequentially:
-1. **News Analyst** → extracts market-moving events and sentiment + prediction
-2. **Price Analyst** → technical/statistical summary + prediction
-3. **Writer** → merges both into a final report
+### 4) Async Claude CLI pipeline (3 steps, 2 concurrent)
+Three `claude --print` subprocess calls — Steps 1 and 2 run concurrently:
+1. **News search** (WebSearch + WebFetch enabled) ┐ concurrent via
+2. **Price analysis** (no web access)             ┘ `asyncio.gather`
+3. **Final report** — synthesises both, rendered in the chosen language
+
+`ClaudeClient.run()` uses `asyncio.create_subprocess_exec` — the event loop stays
+unblocked during subprocess execution, enabling concurrency and FastAPI compatibility.
 
 ---
 
 ## Requirements
 
-- Recommended Python: **3.12** (best compatibility for current LLM ecosystem)
+- Recommended Python: **3.12** (`asyncio.to_thread` requires 3.9+)
 - API keys:
-  - Groq
-  - Exa
   - Alpha Vantage
+- Claude Code CLI installed and authenticated (`claude` in PATH)
 
 ---
 
@@ -167,17 +161,16 @@ pip install -r requirements.txt
 ```
 
 ### 3) Configure environment variables
-Create **.env** in the repository root:
+Create **.env** in the repository root (copy from `.env.example`):
 
 ```
-GROQ_API_KEY=your_key
-EXA_API_KEY=your_key
 ALPHAVANTAGE_API_KEY=your_key
-LITELLM_LOG=ERROR
-NEWS_LIMIT=4
-NEWS_MAX_SUMMARY_CHARS=220
-USE_INCLUDE_DOMAINS=true
-NEWS_DAYS_BACK=7 
+CLAUDE_MODEL=claude-opus-4-6
+DEFAULT_LANGUAGE=Polish
+NEWS_DAYS_BACK=7
+PRICE_WINDOW_DAYS=120
+CACHE_TTL_HOURS=4
+DEBUG=false
 ```
 
 > Do not commit **.env**. Keep **.env.example** in the repo instead
@@ -199,16 +192,19 @@ The final report is printed to sdtout
 
 ## Troubleshooting
 
-### 1) Groq token rate limit (TPM) / request too large
-Reduce the prompt size via `.env`:
-
-- decrease `NEWS_LIMIT`
-- decrease `NEWS_MAX_SUMMARY_CHARS`
-
+### 1) `claude` command not found
+Install Claude Code CLI:
+```bash
+npm install -g @anthropic-ai/claude-code
+```
+Then authenticate: `claude login`
 
 ### 2) Alpha Vantage rate limit
-Alpha Vantage may return a rate-limit message ("Note").  
-The app now has caching (TTL 4h) and will use cached data when rate-limited.
+Alpha Vantage may return a rate-limit message. The app caches responses (TTL 4h)
+and falls back to stale cache on failure. Reduce `CACHE_TTL_HOURS` if needed.
+
+### 3) Claude CLI timeout
+Increase timeout in `app/claude_runner.py` → `_CLAUDE_TIMEOUT` (default: 180s).
 
 ---
 

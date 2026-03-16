@@ -55,21 +55,22 @@ Finance_AI_Agent/
 ### Execution Flow
 
 ```
-python3 main.py → User enters symbol → claude_runner.run(symbol)
-  → Step 0: Alpha Vantage fetch + indicators computed locally (no LLM)
-  → Step 1: claude --print --allowedTools WebSearch,WebFetch  (news search)
-  → Step 2: claude --print  (price analysis, no web access)
+python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol))
+  → Step 0: Alpha Vantage fetch + indicators (asyncio.to_thread, no LLM)
+  → Steps 1+2: concurrent via asyncio.gather
+      → Step 1: claude --print --allowedTools WebSearch,WebFetch  (news search)
+      → Step 2: claude --print  (price analysis, no web access)
   → Step 3: claude --print  (final report synthesis, no web access)
 ```
 
 ### Pipeline Architecture
 
-Three sequential `claude --print` subprocess calls:
+Steps 1 and 2 run concurrently via `asyncio.gather` — wall time = `max(step1, step2)`:
 1. **News search** — WebSearch + WebFetch enabled; searches Tier 1 sources first via `site:` operator queries, falls back to Tier 2 only if needed; enforces freshness, credibility, specificity, and corroboration checks before including any event
 2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage
 3. **Final report** — No web access; synthesizes news and price analysis into a structured report
 
-Step 0 (price data + indicators) runs locally in Python before any Claude call — no LLM involved.
+Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop.
 
 ## Code Style & Conventions
 
@@ -130,6 +131,7 @@ Config is validated at startup with type coercion and range checking. Invalid va
 ## Key Design Patterns
 
 - **Subprocess isolation**: Each Claude call is a separate `claude --print` process. Web tools (`WebSearch`, `WebFetch`) are only granted to Step 1 — Steps 2 and 3 have no internet access.
+- **Async non-blocking subprocesses**: `ClaudeClient.run()` uses `asyncio.create_subprocess_exec` — the event loop is never blocked during Claude CLI calls. Steps 1 and 2 run concurrently via `asyncio.gather`. Blocking I/O (Alpha Vantage, file cache) is offloaded via `asyncio.to_thread`. The entire pipeline is FastAPI-compatible.
 - **Tiered source ranking**: News sources are split into Tier 1 (high trust), Tier 2 (supplementary, cross-check required), and Blocked (never use). Step 1 builds `site:` operator queries dynamically from Python lists (`_NEWS_SOURCES_TIER1/2/BLOCKED` in `claude_runner.py`) and injects mandatory verification rules (freshness, credibility, specificity, corroboration) into the prompt.
 - **Caching**: File-based JSON cache with TTL per data source. Falls back to stale cache on API failure.
 - **Retry**: Exponential backoff (1s → 2s → 4s → 8s, max 30s) with ±25% jitter on Alpha Vantage calls.

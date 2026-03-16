@@ -159,6 +159,7 @@ Prioritized list of improvements to grow this PoC into a production-ready system
 33. ⬚ **FastAPI service**
     - `POST /report { "symbol": "BTC" }` → Markdown / JSON response.
     - Async execution, cached results per symbol per hour.
+    - *Async foundation already in place: `ClaudeClient` uses `asyncio.create_subprocess_exec`, all blocking I/O offloaded via `asyncio.to_thread`, `run()` is a native coroutine.*
 
 34. ⬚ **Minimal frontend (Streamlit)**
     - Choose symbol, see live report generation, browse saved reports.
