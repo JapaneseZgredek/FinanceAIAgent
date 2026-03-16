@@ -1,12 +1,12 @@
 """
-Claude Code CLI client — thin wrapper around `claude --print` subprocess calls.
+Claude Code CLI client — async wrapper around `claude --print` subprocess calls.
 
-Isolates all subprocess mechanics (command assembly, timeout, error handling)
-from pipeline logic in claude_runner.py.
+Uses asyncio.create_subprocess_exec so the event loop is never blocked,
+making this client compatible with FastAPI and other async frameworks.
 """
 
+import asyncio
 import logging
-import subprocess
 
 from app.utils.errors import FinanceAgentError
 
@@ -15,7 +15,11 @@ logger = logging.getLogger(__name__)
 
 class ClaudeClient:
     """
-    Executes `claude --print` subprocess calls and returns stdout.
+    Executes `claude --print` subprocess calls asynchronously.
+
+    Uses asyncio.create_subprocess_exec — the event loop stays unblocked
+    during the subprocess call, enabling concurrent Step 1 + Step 2 execution
+    and future FastAPI compatibility.
 
     Args:
         model: Claude model ID to pass via --model flag.
@@ -23,15 +27,15 @@ class ClaudeClient:
 
     Example:
         client = ClaudeClient(model="claude-opus-4-6", timeout=180)
-        result = client.run("Analyse BTC price data...")
-        result_with_web = client.run("Search for news...", allowed_tools="WebSearch,WebFetch")
+        result = await client.run("Analyse BTC price data...")
+        result_with_web = await client.run("Search for news...", allowed_tools="WebSearch,WebFetch")
     """
 
     def __init__(self, model: str, timeout: int) -> None:
         self.model = model
         self.timeout = timeout
 
-    def run(self, prompt: str, allowed_tools: str = "") -> str:
+    async def run(self, prompt: str, allowed_tools: str = "") -> str:
         """
         Run a single `claude --print` call and return the response.
 
@@ -58,16 +62,10 @@ class ClaudeClient:
         cmd += ["-p", prompt]
 
         try:
-            result = subprocess.run(
-                cmd,
-                capture_output=True,
-                text=True,
-                timeout=self.timeout,
-            )
-        except subprocess.TimeoutExpired:
-            raise FinanceAgentError(
-                f"Claude CLI timed out after {self.timeout}s. "
-                "Try again or increase timeout."
+            proc = await asyncio.create_subprocess_exec(
+                *cmd,
+                stdout=asyncio.subprocess.PIPE,
+                stderr=asyncio.subprocess.PIPE,
             )
         except FileNotFoundError:
             raise FinanceAgentError(
@@ -75,9 +73,22 @@ class ClaudeClient:
                 "Install with: npm install -g @anthropic-ai/claude-code"
             )
 
-        if result.returncode != 0:
+        try:
+            stdout, stderr = await asyncio.wait_for(
+                proc.communicate(),
+                timeout=self.timeout,
+            )
+        except asyncio.TimeoutError:
+            proc.kill()
+            await proc.communicate()
             raise FinanceAgentError(
-                f"Claude CLI exited with code {result.returncode}: {result.stderr[:500]}"
+                f"Claude CLI timed out after {self.timeout}s. "
+                "Try again or increase timeout."
             )
 
-        return result.stdout.strip()
+        if proc.returncode != 0:
+            raise FinanceAgentError(
+                f"Claude CLI exited with code {proc.returncode}: {stderr.decode()[:500]}"
+            )
+
+        return stdout.decode().strip()

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 
@@ -27,7 +28,7 @@ def analyze_symbol(symbol: str, language: str):
             hint="Enter a cryptocurrency symbol like BTC, ETH, or SOL.",
         )
 
-    result = run(symbol, language=language)
+    result = asyncio.run(run(symbol, language=language))
     print("\n\n========== FINAL RESULT ==========\n")
     print(result)
     return result

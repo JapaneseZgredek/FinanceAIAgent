@@ -1,15 +1,16 @@
 """
 Orchestrates the Finance AI Agent using Claude Code CLI subprocesses.
 
-Three sequential `claude --print` subprocess calls:
-  1. News search  — Claude uses its built-in WebSearch tool
-  2. Price analysis — Claude interprets pre-computed technical indicators
+Three Claude CLI calls, two of which run concurrently:
+  1. News search  — Claude uses its built-in WebSearch tool        ┐ asyncio.gather
+  2. Price analysis — Claude interprets pre-computed indicators    ┘ (parallel)
   3. Final report  — Claude synthesises both into a structured report
 
 Step 0 (local, no LLM): price data fetched from Alpha Vantage and indicators
 calculated in Python before any Claude call is made.
 """
 
+import asyncio
 import logging
 import os
 import re
@@ -35,7 +36,7 @@ _news_cache = CacheManager.with_ttl_minutes(_NEWS_CACHE_DIR, config.CLAUDE_NEWS_
 _SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,20}$")
 
 
-def run(
+async def run(
     symbol: str,
     language: str = "Polish",
     *,
@@ -45,26 +46,22 @@ def run(
     """
     Run the full analysis pipeline for a cryptocurrency symbol.
 
+    Steps 1 and 2 run concurrently via asyncio.gather — total wall time is
+    max(step1, step2) instead of step1 + step2.
+
     Steps:
       0. Fetch price data + calculate technical indicators locally (no LLM)
-      1. News search via Claude CLI + WebSearch  (always English — internal)
-      2. Technical price analysis via Claude CLI  (always English — internal)
+      1. News search via Claude CLI + WebSearch  } concurrent —
+      2. Technical price analysis via Claude CLI } asyncio.gather
       3. Final report via Claude CLI              (output in `language`)
-
-    Steps 1 and 2 are intermediate data fed back into Claude — the user never
-    sees them. Keeping them in English gives Claude the best reasoning quality.
-    Only Step 3 (what the user actually reads) is rendered in the chosen language.
 
     Args:
         symbol: Cryptocurrency ticker (e.g., "BTC", "ETH", "SOL").
         language: Output language for the final report (e.g., "Polish",
-                  "English", "Spanish"). Passed per-request so callers —
-                  including a future FastAPI frontend — can set it dynamically
-                  without restarting the server.
-        alpha_client: Optional AlphaVantageClient instance. If None, a default
-                      instance is created from config. Pass explicitly for testing.
-        claude_client: Optional ClaudeClient instance. If None, a default
-                       instance is created from config. Pass explicitly for testing.
+                  "English", "Spanish"). Passed per-request so FastAPI
+                  callers can set it dynamically per request.
+        alpha_client: Optional AlphaVantageClient for dependency injection.
+        claude_client: Optional ClaudeClient for dependency injection.
 
     Returns:
         Formatted market report as a string.
@@ -87,26 +84,28 @@ def run(
 
     logger.info("Starting analysis for %s (output language: %s)", symbol, language)
 
-    # Step 0: price data from Alpha Vantage + local indicators (no LLM)
-    price_data = get_formatted_price_data(
-        alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N
+    # Step 0: price data from Alpha Vantage + local indicators (offloaded to thread
+    # to avoid blocking the event loop — Alpha Vantage call is blocking I/O)
+    price_data = await asyncio.to_thread(
+        get_formatted_price_data,
+        alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N,
     )
 
-    # Step 1: news search — always English (intermediate, never shown to user)
-    news_analysis = _get_news_analysis(symbol, claude_client)
+    # Steps 1 and 2: run concurrently — neither depends on the other's output
+    news_analysis, price_analysis = await asyncio.gather(
+        _get_news_analysis(symbol, claude_client),
+        _get_price_analysis(symbol, price_data, claude_client),
+    )
 
-    # Step 2: price analysis — always English (intermediate, never shown to user)
-    price_analysis = _get_price_analysis(symbol, price_data, claude_client)
-
-    # Step 3: final report — rendered in the requested language
-    return _get_final_report(symbol, news_analysis, price_analysis, language, claude_client)
+    # Step 3: final report — depends on both outputs above
+    return await _get_final_report(symbol, news_analysis, price_analysis, language, claude_client)
 
 
 # =============================================================================
 # Internal helpers
 # =============================================================================
 
-def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
+async def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     """
     Fetch recent news for the symbol via Claude CLI + WebSearch. (Call 1 of 3)
 
@@ -122,7 +121,7 @@ def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
         Formatted string with market events, sentiment, and news tendency (English).
     """
     cache_key = f"claude_news_{symbol}"
-    cached, is_fresh = _news_cache.get(cache_key)
+    cached, is_fresh = await asyncio.to_thread(_news_cache.get, cache_key)
     if is_fresh and cached:
         logger.info("News cache hit for %s", symbol)
         return cached["analysis"]
@@ -140,12 +139,12 @@ def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     )
 
     # WebSearch and WebFetch only for this step — the only one that needs web access
-    analysis = claude_client.run(prompt, allowed_tools="WebSearch,WebFetch")
-    _news_cache.set(cache_key, {"analysis": analysis})
+    analysis = await claude_client.run(prompt, allowed_tools="WebSearch,WebFetch")
+    await asyncio.to_thread(_news_cache.set, cache_key, {"analysis": analysis})
     return analysis
 
 
-def _get_price_analysis(symbol: str, price_data: str, claude_client: ClaudeClient) -> str:
+async def _get_price_analysis(symbol: str, price_data: str, claude_client: ClaudeClient) -> str:
     """
     Technical analysis of price data via Claude CLI. (Call 2 of 3)
 
@@ -162,10 +161,10 @@ def _get_price_analysis(symbol: str, price_data: str, claude_client: ClaudeClien
     """
     logger.info("Running price analysis for %s", symbol)
     prompt = build_price_analysis_prompt(symbol=symbol, price_data=price_data)
-    return claude_client.run(prompt)
+    return await claude_client.run(prompt)
 
 
-def _get_final_report(
+async def _get_final_report(
     symbol: str,
     news_analysis: str,
     price_analysis: str,
@@ -197,4 +196,4 @@ def _get_final_report(
         language=language,
         today=today,
     )
-    return claude_client.run(prompt)
+    return await claude_client.run(prompt)
