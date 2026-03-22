@@ -6,8 +6,8 @@ Three Claude CLI calls, two of which run concurrently:
   2. Price analysis — Claude interprets pre-computed indicators    ┘ (parallel)
   3. Final report  — Claude synthesises both into a structured report
 
-Step 0 (local, no LLM): price data fetched from Alpha Vantage and indicators
-calculated in Python before any Claude call is made.
+Step 0 (local, no LLM): price data (Alpha Vantage) and macro indicators (FRED API)
+fetched concurrently before any Claude call is made.
 """
 
 import asyncio
@@ -19,6 +19,7 @@ from datetime import datetime
 from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.clients.cache import CacheManager
 from app.clients.claude_client import ClaudeClient
+from app.clients.macro_client import MacroClient
 from app import config
 from app.prompts import build_news_prompt, build_price_analysis_prompt, build_final_report_prompt
 from app.tools.price_tools import get_formatted_price_data
@@ -42,6 +43,7 @@ async def run(
     *,
     alpha_client: AlphaVantageClient | None = None,
     claude_client: ClaudeClient | None = None,
+    macro_client: MacroClient | None = None,
 ) -> str:
     """
     Run the full analysis pipeline for a cryptocurrency symbol.
@@ -50,9 +52,9 @@ async def run(
     max(step1, step2) instead of step1 + step2.
 
     Steps:
-      0. Fetch price data + calculate technical indicators locally (no LLM)
+      0. Fetch price data + macro indicators locally (no LLM)
       1. News search via Claude CLI + WebSearch  } concurrent —
-      2. Technical price analysis via Claude CLI } asyncio.gather
+      2. Technical + macro analysis via Claude CLI} asyncio.gather
       3. Final report via Claude CLI              (output in `language`)
 
     Args:
@@ -62,6 +64,8 @@ async def run(
                   callers can set it dynamically per request.
         alpha_client: Optional AlphaVantageClient for dependency injection.
         claude_client: Optional ClaudeClient for dependency injection.
+        macro_client: Optional MacroClient for dependency injection.
+                      If None and FRED_API_KEY is set, one is created automatically.
 
     Returns:
         Formatted market report as a string.
@@ -81,20 +85,24 @@ async def run(
         alpha_client = AlphaVantageClient(config.ALPHAVANTAGE_API_KEY, config.CACHE_TTL_HOURS)
     if claude_client is None:
         claude_client = ClaudeClient(model=config.CLAUDE_MODEL, timeout=_CLAUDE_TIMEOUT)
+    if macro_client is None and config.FRED_API_KEY:
+        macro_client = MacroClient(config.FRED_API_KEY)
 
     logger.info("Starting analysis for %s (output language: %s)", symbol, language)
 
-    # Step 0: price data from Alpha Vantage + local indicators (offloaded to thread
-    # to avoid blocking the event loop — Alpha Vantage call is blocking I/O)
-    price_data = await asyncio.to_thread(
-        get_formatted_price_data,
-        alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N,
+    # Step 0: price data + macro indicators — both are blocking I/O, run concurrently
+    price_data, macro_context = await asyncio.gather(
+        asyncio.to_thread(
+            get_formatted_price_data,
+            alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N,
+        ),
+        asyncio.to_thread(_fetch_macro_context, macro_client),
     )
 
     # Steps 1 and 2: run concurrently — neither depends on the other's output
     news_analysis, price_analysis = await asyncio.gather(
         _get_news_analysis(symbol, claude_client),
-        _get_price_analysis(symbol, price_data, claude_client),
+        _get_price_analysis(symbol, price_data, macro_context, claude_client),
     )
 
     # Step 3: final report — depends on both outputs above
@@ -104,6 +112,25 @@ async def run(
 # =============================================================================
 # Internal helpers
 # =============================================================================
+
+def _fetch_macro_context(macro_client: MacroClient | None) -> str | None:
+    """
+    Fetch and format macro indicators synchronously (designed for asyncio.to_thread).
+
+    Args:
+        macro_client: MacroClient instance, or None if FRED_API_KEY is not configured.
+
+    Returns:
+        Formatted macro context string, or None if unavailable.
+    """
+    if macro_client is None:
+        return None
+    try:
+        snapshot = macro_client.get_snapshot()
+        return macro_client.format_for_llm(snapshot)
+    except Exception as e:
+        logger.warning("Macro context fetch failed, continuing without it: %s", e)
+        return None
 
 async def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     """
@@ -144,9 +171,14 @@ async def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     return analysis
 
 
-async def _get_price_analysis(symbol: str, price_data: str, claude_client: ClaudeClient) -> str:
+async def _get_price_analysis(
+    symbol: str,
+    price_data: str,
+    macro_context: str | None,
+    claude_client: ClaudeClient,
+) -> str:
     """
-    Technical analysis of price data via Claude CLI. (Call 2 of 3)
+    Technical and macro analysis of price data via Claude CLI. (Call 2 of 3)
 
     Always returns English — this output is fed into Claude in Step 3, not
     shown to the user. No web access; Claude works only on the provided data.
@@ -154,13 +186,14 @@ async def _get_price_analysis(symbol: str, price_data: str, claude_client: Claud
     Args:
         symbol: Cryptocurrency ticker.
         price_data: Formatted string with prices and indicators from get_formatted_price_data().
+        macro_context: Formatted macro snapshot from MacroClient, or None if unavailable.
         claude_client: ClaudeClient instance to use for the subprocess call.
 
     Returns:
         Structured signal report grouped by time horizon (English).
     """
-    logger.info("Running price analysis for %s", symbol)
-    prompt = build_price_analysis_prompt(symbol=symbol, price_data=price_data)
+    logger.info("Running price analysis for %s (macro: %s)", symbol, "yes" if macro_context else "no")
+    prompt = build_price_analysis_prompt(symbol=symbol, price_data=price_data, macro_context=macro_context)
     return await claude_client.run(prompt)
 
 

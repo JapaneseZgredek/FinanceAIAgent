@@ -34,17 +34,29 @@ def build_news_prompt(
     tier1_list = ", ".join(tier1_sources)
     tier2_list = ", ".join(tier2_sources)
     blocked_list = ", ".join(blocked_sources)
+    today_year = today[:4]
 
     return f"""\
 Today is {today}. Search the web for recent news about the {symbol} cryptocurrency \
-from the last {news_days_back} days.
+from the last {news_days_back} days, and separately look up the current Fed / FOMC macro backdrop.
 
 === SEARCH STRATEGY ===
-Execute searches in this order:
-1. Primary search (Tier 1 sources only):
+Execute ALL three searches below — searches 1 and 2 are for crypto news, search 3 is always required:
+
+1. Primary crypto search (Tier 1 sources only):
    Query: "{symbol} cryptocurrency news" ({tier1_site_query})
-2. Supplementary search (Tier 2 sources) ONLY if Tier 1 yields fewer than 3 relevant events:
+
+2. Supplementary crypto search (Tier 2 sources) ONLY if search 1 yields fewer than 3 relevant events:
    Query: "{symbol} crypto news" ({tier2_site_query})
+
+3. FOMC / Fed macro search (always execute, independent of crypto news results):
+   Goal: find the next scheduled FOMC meeting date, the current Fed Funds rate, and any
+   recent Fed statements, dot-plot updates, or minutes published in the last {news_days_back} days.
+   Recommended sources: federalreserve.gov (official), finance.yahoo.com, coindesk.com.
+   Queries to try (use whichever returns results):
+     a) "FOMC meeting schedule {today_year}" site:federalreserve.gov
+     b) "Federal Reserve rate decision {today_year}"
+     c) "Fed FOMC next meeting date {today_year}"
 
 === SOURCE RELIABILITY RULES ===
 TIER 1 — HIGH TRUST: {tier1_list}
@@ -58,12 +70,18 @@ BLOCKED — NEVER USE: {blocked_list}
   These domains publish AI-generated price-prediction content with zero analytical value.
   Discard any result from these domains immediately, regardless of headline.
 
+OFFICIAL / MACRO SOURCES (search 3 only — not subject to Tier rules):
+  federalreserve.gov — official Fed calendar and statements; treat as highest trust.
+  finance.yahoo.com, coindesk.com — acceptable for FOMC date confirmation.
+
 === CRITICAL VERIFICATION REQUIREMENTS ===
 Before including any piece of information you MUST verify:
   1. FRESHNESS: Check the article publication date. Only include events from the last \
 {news_days_back} days (after {today} minus {news_days_back} days).
      Reject any article without a visible publication date.
-  2. SOURCE CREDIBILITY: Confirm the domain matches a Tier 1 or Tier 2 entry above.
+     EXCEPTION: FOMC meeting dates are future events — include them regardless of when
+     the calendar was published, as long as the meeting date itself is upcoming.
+  2. SOURCE CREDIBILITY: Confirm the domain matches a Tier 1, Tier 2, or Official/Macro entry.
      Do not trust a site just because it appears in search results.
   3. SPECIFICITY: The event must name a concrete catalyst (a regulator, institution,
      fund, or protocol). Vague headlines like 'Bitcoin may rise' are not market-moving events.
@@ -71,8 +89,10 @@ Before including any piece of information you MUST verify:
      '(unconfirmed — single source)' in your output.
 
 === FOCUS ===
-Include ONLY market-moving events: regulatory actions, major partnerships, exchange listings,
-ETF inflows/outflows, protocol upgrades, exchange hacks, macro events (Fed, CPI, tariffs).
+Crypto events: regulatory actions, major partnerships, exchange listings, ETF inflows/outflows,
+protocol upgrades, exchange hacks, on-chain catalysts.
+Macro (search 3): next FOMC meeting date, current Fed Funds rate, recent rate decisions,
+Fed statements or minutes, market expectations for the next decision (cut / hold / hike).
 Skip: educational articles, price predictions without catalysts, general explanations.
 
 === OUTPUT FORMAT ===
@@ -88,27 +108,54 @@ Positive / Negative / Mixed — one sentence explanation.
 No binary label. Describe which direction the events collectively point toward \
 and why — or state that signals are mixed if no clear tendency emerges.
 
+## Fed / Macro Backdrop
+- Current Fed Funds rate: [X.XX%] (if found)
+- Next FOMC meeting: [YYYY-MM-DD] — [X days away] (if found; state "not found" if search failed)
+- Expected rate action: [cut / hold / hike] based on current market consensus (if found)
+- Recent Fed statement: [key sentence or decision] (only if published within the last \
+{news_days_back} days; omit this line if nothing recent)
+
 Respond in English."""
 
 
-def build_price_analysis_prompt(symbol: str, price_data: str) -> str:
+def build_price_analysis_prompt(
+    symbol: str,
+    price_data: str,
+    macro_context: str | None = None,
+) -> str:
     """
-    Build the Step 2 prompt: technical analysis of pre-computed indicator data.
+    Build the Step 2 prompt: technical and macro analysis of pre-computed data.
 
     Args:
         symbol: Cryptocurrency ticker.
         price_data: Formatted string from get_formatted_price_data().
+        macro_context: Formatted macro snapshot from MacroClient, or None if unavailable.
 
     Returns:
         Prompt string for Claude CLI (no web access).
     """
+    macro_section = ""
+    if macro_context:
+        macro_section = f"""
+=== MACRO CONTEXT ===
+{macro_context}
+
+Macro interpretation guidelines:
+- DXY rising (USD strengthening): historically bearish headwind for risk assets including crypto
+- S&P 500 declining: risk-off environment — watch for correlation-driven crypto weakness
+- VIX > 25: elevated fear — institutional selling likely across risk assets
+- 10Y yield rising: tighter financial conditions — compresses valuations of yield-less assets
+- CPI above 3%: inflationary pressure → potentially hawkish Fed → USD strength risk
+- Gold rising alongside crypto: broad dollar weakness / store-of-value demand
+- Gold rising while crypto falls: risk-off rotation to traditional safe haven
+"""
+
     return f"""\
-You are a quantitative cryptocurrency analyst. \
-Analyze the following technical indicator data for {symbol}.
+You are a quantitative market analyst. \
+Analyze the following data for {symbol}.
 
 === PRICE DATA AND INDICATORS ===
-{price_data}
-
+{price_data}{macro_section}
 Produce a structured signal report grouped by time horizon. \
 For each horizon, report the specific indicator values and what they indicate.
 
@@ -125,6 +172,13 @@ key support/resistance levels from moving averages.
 ## Long-term signals (3–6 months)
 SMA200 direction and slope (rising / flat / falling), \
 overall market structure (bullish above SMA200 / bearish below / transitional).
+
+## Macro backdrop
+Only include this section if macro context was provided above. \
+In 2–3 sentences: how do the current macro conditions (DXY, VIX, yields, gold, CPI, Fed rate) \
+frame the risk environment for {symbol}? Name the dominant macro force and whether it \
+reinforces or conflicts with the technical picture. \
+If no macro context was provided, omit this section entirely.
 
 Do NOT search the web. Use only the provided data. Respond in English."""
 
@@ -218,11 +272,13 @@ price level, indicator crossover, or news event that would resolve the ambiguity
 **What to watch?** [ONLY if ambiguous: specific trigger that would confirm direction]
 
 ### Long-term horizon (3–6 months)
-**Signal state:** [SMA200 direction and slope, overall structure; \
-if macro data is unavailable, state this explicitly]
+**Signal state:** [SMA200 direction and slope, overall structure; include Fed Funds rate \
+and FOMC outlook from the macro backdrop if available]
 **Signal direction:** [directional tendency, or 'insufficient data' if truly unclear]
-**Why?** [2–4 sentences; if data is incomplete, name what is missing and why it matters]
-**What to watch?** [ONLY if ambiguous]
+**Why?** [2–4 sentences; explain how the monetary policy environment (rate level, \
+next FOMC expected decision) reinforces or conflicts with the technical structure; \
+if macro backdrop was not found, state this explicitly]
+**What to watch?** [ONLY if ambiguous; if FOMC is within 14 days, always include it here]
 
 ---
 
@@ -233,6 +289,8 @@ Entry decision:
   'Yes' — 2 or 3 horizons clearly aligned in the same direction
   'Wait for confirmation' — mixed or ambiguous signals across horizons
   'No' — opposing signals, high ATR, or no coherent structure
+  FOMC override: if next FOMC is within 7 days, default to 'Wait for confirmation' \
+  regardless of signal alignment — rate decisions create binary event risk.
 
 Direction: Long (bullish) / Short (bearish) / No clear direction
 
@@ -244,10 +302,14 @@ Leverage calibration (suggest a range, not a single number):
   All 3 horizons aligned + low/compressing ATR: 10x–20x
   Exceptional convergence across all horizons + macro catalyst + very low ATR: up to 25x–30x (rare)
   50x: only if every single signal is in full alignment — treat as extreme exception
+  FOMC proximity penalty: if FOMC is within 14 days, cap leverage one tier lower than \
+  the calibration above would suggest — uncertainty around rate decisions compresses \
+  the reliable signal window.
   IMPORTANT: always state that higher leverage requires proportionally smaller position size.
 
 Entry condition: name the specific technical level, indicator event, or candle close \
-that must occur BEFORE entry makes sense. Be precise.
+that must occur BEFORE entry makes sense. Be precise. If FOMC is upcoming, state whether \
+entry should wait until after the decision.
 
 Output for this section (translate all labels):
 **Enter market:** Yes / No / Wait for confirmation

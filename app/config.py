@@ -93,10 +93,14 @@ def _get_bool(key: str, default: bool) -> bool:
 
 
 # =============================================================================
-# API Keys (required)
+# API Keys
 # =============================================================================
 
 ALPHAVANTAGE_API_KEY = os.getenv("ALPHAVANTAGE_API_KEY")
+
+# Optional — enables macro context (S&P 500, VIX, 10Y yield, Gold, DXY, CPI, Fed rate).
+# Free key at https://fred.stlouisfed.org/docs/api/api_key.html
+FRED_API_KEY = os.getenv("FRED_API_KEY")
 
 # =============================================================================
 # Claude CLI Configuration

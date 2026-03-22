@@ -69,9 +69,16 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - Single-source events marked `(unconfirmed — single source)` in output.
     - *`app/claude_runner.py` — `_NEWS_SOURCES_TIER1/2/BLOCKED`, `_get_news_analysis()`*
 
-13. ⬚ **Macro context inputs**
-    - Optional: DXY (USD index), S&P 500 trend, CPI / Fed announcements.
-    - Let the final report include macro reasoning.
+13. ✅ **Macro context inputs**
+    - FRED API integration: S&P 500, VIX, 10Y Treasury yield, Gold, USD Index (DXY), CPI YoY, Fed Funds Rate.
+    - Fetched in Step 0 concurrently with price data via `asyncio.gather` + `asyncio.to_thread`.
+    - Injected into Step 2 (price analysis prompt) with interpretation guidelines per indicator.
+    - Step 2 outputs a `## Macro backdrop` section consumed by Step 3.
+    - FOMC/Fed narrative covered by Step 1 news search (`## Fed / Macro Backdrop` section).
+    - Graceful degradation: if `FRED_API_KEY` not set, pipeline runs without macro context.
+    - *`app/clients/macro_client.py` — `MacroClient`, `MacroSnapshot`*
+    - *`app/claude_runner.py` — `_fetch_macro_context()`, `run()`*
+    - *`app/prompts.py` — `build_price_analysis_prompt()`*
 
 14. ⬚ **"Risk Factors" section in report**
     - Explicit risks: regulation, exchange incidents, liquidity, volatility spikes.
