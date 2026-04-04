@@ -394,6 +394,45 @@ should wait until after the decision]
 **If triggered — how to enter:** [execution approach once the trigger fires]
 
 ---
+
+### What to watch next
+Synthesise forward-looking signals from the two input analyses. \
+Write 3–6 bullets total, grouped under the subcategories below. \
+Omit any subcategory block entirely if the input data contains no relevant signal for it. \
+Each bullet must be actionable and forward-looking — use phrasing like \
+"watch for", "monitor", "if X then Y". \
+Do NOT repeat conclusions already stated in the horizons or Trading perspective. \
+Translate all headers and labels into {language}.
+
+**Macro calendar:**
+- [Next FOMC meeting date and expected rate action, from the Fed/Macro Backdrop in Step 1 \
+news analysis; if within 14 days, flag urgency explicitly]
+- [Any forward-looking catalysts implicit in the News Tendency section of Step 1 — \
+e.g. "market in wait-and-see mode ahead of halving", "institutional interest building"; \
+omit if News Tendency contains no implicit upcoming events]
+
+**Macro environment triggers:**
+- [From Step 2 macro backdrop: one actionable VIX or DXY threshold whose breach would \
+materially change the risk environment — e.g. "if VIX drops below 20, risk-on conditions \
+could accelerate the move"; omit this block entirely if macro backdrop was not available \
+or contains no directional VIX/DXY signal]
+
+**ETF & institutional flows:**
+- [ETF inflow/outflow signals, new ETF filings, or approval decisions from Step 1 Market Events; \
+omit this block entirely if no ETF signals are present in the input]
+
+**On-chain & narrative catalysts:**
+- [Protocol upgrades, on-chain metric inflections, or regulatory developments that could \
+escalate — sourced from Step 1 Market Events; omit if no relevant signals]
+
+**Technical triggers:**
+- [One key price level from Step 2 — SMA cross, resistance, or support — whose breach \
+would materially change the signal direction]
+- [ATR/volatility regime direction: whether expanding or compressing, and what it implies \
+for the next 1–2 weeks]
+- [MA cross or RSI divergence from Step 2 if present and unresolved; omit if absent]
+
+---
 *This report is analytical in nature. It does not constitute financial advice.*
 
 Do NOT search the web. Use only the provided analyses. Respond in {language}."""

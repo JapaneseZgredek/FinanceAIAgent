@@ -96,8 +96,14 @@ Prioritized list of improvements to grow this PoC into a production-ready system
       no new API calls, Python structures, or pipeline stages required.
     - *`app/prompts.py` — `build_final_report_prompt()`*
 
-15. ⬚ **"What to watch next" section**
-    - Upcoming macro events, ETF flow signals, on-chain narratives.
+15. ✅ **"What to watch next" section**
+    - Always-present forward-looking section after Trading Perspective.
+    - Five subcategories (each omitted if no signal): Macro calendar (FOMC + News Tendency
+      implicit catalysts), Macro environment triggers (VIX/DXY thresholds from Step 2 backdrop),
+      ETF & institutional flows, On-chain & narrative catalysts, Technical triggers
+      (key SMA level, ATR direction, MA cross / RSI divergence).
+    - Derives entirely from existing Step 1 (news) and Step 2 (price) outputs — no new API calls.
+    - *`app/prompts.py` — `build_final_report_prompt()`*
 
 ---
 
