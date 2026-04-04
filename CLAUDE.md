@@ -68,7 +68,7 @@ python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol)
 Steps 1 and 2 run concurrently via `asyncio.gather` — wall time = `max(step1, step2)`:
 1. **News search** — WebSearch + WebFetch enabled; searches Tier 1 sources first via `site:` operator queries, falls back to Tier 2 only if needed; enforces freshness, credibility, specificity, and corroboration checks before including any event
 2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage
-3. **Final report** — No web access; synthesizes news and price analysis into a structured report
+3. **Final report** — No web access; synthesizes news and price analysis into a structured report with: short/medium/long-term horizons, a Risk Factors section (regulation / exchange incidents / liquidity / volatility spikes, medium/high severity only, with expected market behavior per category), and a Trading perspective with two mutually exclusive output paths — PATH A (Enter now) or PATH B (Wait/No) — where active HIGH risk factors override the entry decision and inject execution constraints
 
 Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop.
 

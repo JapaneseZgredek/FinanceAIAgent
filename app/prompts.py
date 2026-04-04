@@ -282,6 +282,54 @@ if macro backdrop was not found, state this explicitly]
 
 ---
 
+### Risk Factors
+For each category below, derive severity from the input data only.
+Omit any category where evidence supports only low severity — do NOT write low-severity rows.
+If all four categories would be omitted, write one line instead of the table:
+"No significant risk factors identified in current data."
+Translate all headers, labels, and behavior descriptions into {language}.
+
+Severity rules per category:
+  Regulation:
+    medium — regulatory scrutiny or investigation mentioned, no active enforcement yet
+    high   — active enforcement action, ban, forced exchange delisting by a regulator
+  Exchange incidents:
+    medium — unconfirmed rumors or single-source reports of exchange problems
+    high   — confirmed hack, insolvency, withdrawal halt, or forced delisting
+  Liquidity:
+    medium — volatility regime HIGH; or ATR rising with volume below 30d average
+    high   — volatility regime EXTREME; or explicit critically low volume in price analysis
+  Volatility spikes:
+    medium — volatility regime HIGH; or ATR rising with NORMAL regime
+    high   — volatility regime EXTREME; or ATR rising with HIGH or EXTREME regime
+
+Expected behavior descriptions per severity:
+  Regulation medium  → Regulatory pressure may cause elevated selling; watch for
+                       sudden sharp moves on new enforcement headlines.
+  Regulation high    → Binary event risk: gap moves likely on news — stops may not
+                       fill at intended price; exchange outflows possible.
+  Exchange medium    → Unconfirmed risk; monitor for withdrawal halt announcement
+                       which would trigger panic selling and contagion.
+  Exchange high      → Counterparty risk active: correct directional call does not
+                       guarantee profit if exchange freezes withdrawals.
+  Liquidity medium   → Wider spreads and moderate slippage expected; use limit orders,
+                       avoid oversized positions.
+  Liquidity high     → High slippage on entry and exit; stop-loss orders may miss
+                       target price — reduce position size by 30–50%, limit orders only.
+  Volatility medium  → Larger price swings likely; stops may be triggered by noise
+                       before real direction emerges — widen stops proportionally.
+  Volatility high    → Rapid moves in either direction, cascading liquidations possible;
+                       gap risk on stops — smaller position mandatory.
+
+Write one block per qualifying category. Omit categories with low severity entirely.
+If no category qualifies, write: "No significant risk factors identified in current data."
+
+**[Risk category name]** — [medium / high]
+[One sentence: cite the specific signal — news event with source and date, or regime/ATR values]
+[Expected behavior from the rules above — one sentence, plain language]
+
+---
+
 ### Trading perspective
 Synthesise all three horizons. Apply these calibration rules:
 
@@ -291,6 +339,22 @@ Entry decision:
   'No' — opposing signals, high ATR, or no coherent structure
   FOMC override: if next FOMC is within 7 days, default to 'Wait for confirmation' \
   regardless of signal alignment — rate decisions create binary event risk.
+
+Risk Factor overrides (apply after FOMC override, before leverage calibration):
+  - Any factor at HIGH → cap entry decision one level lower:
+      Yes → 'Wait for confirmation'; Wait → No
+    Exception: all three horizons perfectly aligned AND only Liquidity is HIGH
+    (not Regulation or Exchange) → entry allowed but position size must be reduced.
+  - Regulation HIGH → treat as binary event risk identical to FOMC within 7 days:
+    force 'Wait for confirmation', cap leverage one tier lower than calibration suggests.
+  - Exchange incident HIGH → include in **Why not now** / **Why this leverage?**:
+    "Counterparty risk active — reduce position size by 50% regardless of leverage tier."
+  - Liquidity HIGH → include in **How to enter** / **What to watch**:
+    "Use limit orders only; widen stop-loss to account for spread and slippage."
+  - Volatility spike HIGH → include in **How to enter** / **What to watch**:
+    "Gap risk on stops — set stop-loss wider than ATR suggests, size down accordingly."
+  - Two or more factors at HIGH simultaneously → default to No/Wait regardless of
+    horizon alignment.
 
 Direction: Long (bullish) / Short (bearish) / No clear direction
 
@@ -307,17 +371,27 @@ Leverage calibration (suggest a range, not a single number):
   the reliable signal window.
   IMPORTANT: always state that higher leverage requires proportionally smaller position size.
 
-Entry condition: name the specific technical level, indicator event, or candle close \
-that must occur BEFORE entry makes sense. Be precise. If FOMC is upcoming, state whether \
-entry should wait until after the decision.
+Output for this section — choose EXACTLY ONE path. Translate all labels.
 
-Output for this section (translate all labels):
-**Enter market:** Yes / No / Wait for confirmation
-**Direction:** Long / Short / No clear direction
+PATH A — use when entry decision is 'Yes' (conditions met, entering now):
+**Decision:** Enter now
+**Direction:** Long / Short
 **Suggested leverage:** Xx–Yx
 **Why this leverage?** [2–3 sentences: which signals justify this range, \
 what prevents going higher, and the position sizing reminder]
-**Entry condition:** [specific level or event — the more precise the better]
+**How to enter:** [order type (limit or market), specific price level or candle close \
+that confirms entry, stop-loss placement]
+
+PATH B — use when entry decision is 'Wait for confirmation' or 'No' (not entering now):
+**Decision:** Wait for confirmation / Do not enter
+**Direction (anticipated):** Long / Short / Unclear
+**Why not now:** [1–2 sentences: what is conflicting, missing, or too risky — \
+reference active risk factors if they forced this decision]
+**What to watch:** [the exact price level, indicator crossover, candle close, or news event \
+that must occur before entry makes sense; if FOMC is upcoming, state whether entry \
+should wait until after the decision]
+**If triggered — leverage:** [leverage range to apply once the condition is met]
+**If triggered — how to enter:** [execution approach once the trigger fires]
 
 ---
 *This report is analytical in nature. It does not constitute financial advice.*

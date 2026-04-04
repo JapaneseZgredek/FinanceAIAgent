@@ -80,9 +80,21 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - *`app/claude_runner.py` — `_fetch_macro_context()`, `run()`*
     - *`app/prompts.py` — `build_price_analysis_prompt()`*
 
-14. ⬚ **"Risk Factors" section in report**
-    - Explicit risks: regulation, exchange incidents, liquidity, volatility spikes.
-    - Severity: low / medium / high.
+14. ✅ **"Risk Factors" section in report**
+    - Four categories: regulation, exchange incidents, liquidity, volatility spikes.
+    - Severity medium/high only — low-severity rows omitted; fallback prose if no risks qualify.
+    - Each block: bold category name + severity, one-sentence basis citing the specific
+      signal (news event with source/date, or regime/ATR values), one-sentence expected
+      market behavior in plain language.
+    - Risk Factor overrides injected into Trading perspective: HIGH factors cap the entry
+      decision one level (Yes → Wait, Wait → No), force position-size reductions, and
+      append execution guidance (limit orders, wider stops, 50% size cut for counterparty risk).
+    - Trading perspective restructured into two mutually exclusive paths:
+      PATH A (Enter now) and PATH B (Wait/No) — eliminates the contradiction between
+      "Enter: Yes" and "Entry condition" coexisting in the same output.
+    - Derives entirely from existing Step 1 (news) and Step 2 (price/indicators) data —
+      no new API calls, Python structures, or pipeline stages required.
+    - *`app/prompts.py` — `build_final_report_prompt()`*
 
 15. ⬚ **"What to watch next" section**
     - Upcoming macro events, ETF flow signals, on-chain narratives.
