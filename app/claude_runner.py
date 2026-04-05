@@ -91,13 +91,17 @@ async def run(
     logger.info("Starting analysis for %s (output language: %s)", symbol, language)
 
     # Step 0: price data + macro indicators — both are blocking I/O, run concurrently
-    price_data, macro_context = await asyncio.gather(
+    (price_data, pre_decision), macro_context = await asyncio.gather(
         asyncio.to_thread(
             get_formatted_price_data,
             alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N,
         ),
         asyncio.to_thread(_fetch_macro_context, macro_client),
     )
+    _decision_line = next(
+        (l for l in pre_decision.splitlines() if "BASELINE DECISION:" in l), "N/A"
+    )
+    logger.info("Pre-computed decision for %s: %s", symbol, _decision_line)
 
     # Steps 1 and 2: run concurrently — neither depends on the other's output
     news_analysis, price_analysis = await asyncio.gather(
@@ -106,7 +110,7 @@ async def run(
     )
 
     # Step 3: final report — depends on both outputs above
-    return await _get_final_report(symbol, news_analysis, price_analysis, language, claude_client)
+    return await _get_final_report(symbol, news_analysis, price_analysis, language, pre_decision, claude_client)
 
 
 # =============================================================================
@@ -202,6 +206,7 @@ async def _get_final_report(
     news_analysis: str,
     price_analysis: str,
     language: str,
+    pre_decision: str,
     claude_client: ClaudeClient,
 ) -> str:
     """
@@ -215,6 +220,9 @@ async def _get_final_report(
         news_analysis: Output from _get_news_analysis() (English).
         price_analysis: Output from _get_price_analysis() (English).
         language: Output language for the report (e.g., "Polish", "English", "Spanish").
+        pre_decision: Deterministic entry decision from compute_pre_decision() — injected
+                      as a hard constraint into the prompt to prevent non-deterministic
+                      LLM decision-making across runs on the same data.
         claude_client: ClaudeClient instance to use for the subprocess call.
 
     Returns:
@@ -228,5 +236,6 @@ async def _get_final_report(
         price_analysis=price_analysis,
         language=language,
         today=today,
+        pre_decision=pre_decision,
     )
     return await claude_client.run(prompt)

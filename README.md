@@ -35,6 +35,9 @@ Finance_AI_Agent/
 │   ├── TECHNICAL_ANALYSIS.md       #    └── Technical indicators guide (SMA, RSI, MACD...)
 │   └── ROADMAP.md                  #    └── Prioritized feature roadmap
 │
+├── reports/                        # 📄 Saved reports (auto-created, gitignored)
+│   └── YYYY-MM-DD_<SYMBOL>.md      #    └── One file per symbol per day
+│
 ├── .cache/                         # 📦 Local cache (auto-created, gitignored)
 │   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
 │   └── claude_news/                #    └── Cached news results (TTL: 30min)
@@ -81,6 +84,9 @@ User Input (BTC) → main.py → asyncio.run(claude_runner.run())
                                      │
                                      ▼
                             Final Report (stdout)
+                                     │
+                                     ▼
+                    reports/YYYY-MM-DD_<SYMBOL>.md (auto-saved)
 ```
 
 
@@ -120,6 +126,14 @@ Instead of sending long raw time series to the model, the price tool returns a c
 
 **Trend Summary:**
 Automated assessment combining all signals into BULLISH / BEARISH / NEUTRAL with explanation.
+
+**Deterministic pre-decision:**
+Before any LLM call, `compute_pre_decision()` derives the trading entry decision
+(`ENTER` / `WAIT` / `NO`) directly from the indicator values using objective threshold
+rules (MACD snapshot trend, price vs SMA20/50/200, ATR phase). This result is injected
+into the Step 3 prompt as a hard constraint — the LLM may only override it via explicit
+rules (FOMC within 7 days, or a HIGH risk factor). This eliminates the main source of
+non-deterministic decisions across runs on identical data.
 
 This prevents "prompt bloat" while providing rich technical context for the LLM.
 

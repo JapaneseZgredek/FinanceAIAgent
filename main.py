@@ -1,6 +1,8 @@
 import asyncio
 import logging
 import os
+from datetime import date
+from pathlib import Path
 
 from app.claude_runner import run
 from app.utils.errors import safe_run, ConfigurationError
@@ -19,6 +21,17 @@ logging.getLogger("httpcore").setLevel(logging.WARNING)
 # Enable debug mode via environment variable
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
 
+logger = logging.getLogger(__name__)
+
+
+def _save_report(symbol: str, report: str) -> None:
+    """Save the final report to reports/YYYY-MM-DD_<SYMBOL>.md."""
+    reports_dir = Path("reports")
+    reports_dir.mkdir(exist_ok=True)
+    filename = reports_dir / f"{date.today().isoformat()}_{symbol}.md"
+    filename.write_text(report, encoding="utf-8")
+    logger.info("Report saved → %s", filename)
+
 
 def analyze_symbol(symbol: str, language: str):
     """Run analysis for a cryptocurrency symbol in the given output language."""
@@ -31,6 +44,7 @@ def analyze_symbol(symbol: str, language: str):
     result = asyncio.run(run(symbol, language=language))
     print("\n\n========== FINAL RESULT ==========\n")
     print(result)
+    _save_report(symbol, result)
     return result
 
 

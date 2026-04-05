@@ -189,6 +189,7 @@ def build_final_report_prompt(
     price_analysis: str,
     language: str,
     today: str,
+    pre_decision: str = "",
 ) -> str:
     """
     Build the Step 3 prompt: synthesise news + price analysis into the final report.
@@ -199,15 +200,38 @@ def build_final_report_prompt(
         price_analysis: Output from Step 2 (English).
         language: Target output language (e.g. "Polish", "English", "Spanish").
         today: Current date string (YYYY-MM-DD).
+        pre_decision: Deterministic entry decision from compute_pre_decision().
+                      Injected as a hard constraint to prevent non-deterministic
+                      LLM decision-making across runs on the same data.
 
     Returns:
         Prompt string for Claude CLI (no web access). Output will be in `language`.
     """
+    pre_decision_block = ""
+    if pre_decision:
+        pre_decision_block = f"""
+=== PRE-COMPUTED ENTRY SIGNAL (PYTHON — DETERMINISTIC) ===
+The trading entry decision below was computed in Python from the raw technical
+indicators BEFORE this prompt was generated. It uses objective, threshold-based
+rules with no subjective interpretation. Treat it as the baseline decision for
+the Trading perspective section — you MUST use it unless a specific override
+rule applies (listed in the Trading perspective section below).
+
+{pre_decision}
+
+Do NOT override this baseline because of "waning momentum" or "ambiguous short-term
+signals". If 2+ horizons are structurally aligned, the baseline stands. The MACD
+histogram narrowing while still negative is EXPECTED bearish behavior — it does NOT
+make the signal ambiguous. Only FOMC proximity or HIGH risk factors may trigger an override.
+
+"""
+
     return f"""\
 You are a professional cryptocurrency market analyst. Your role is to interpret \
 technical signals and news — not to forecast the future with certainty. \
 Explain the mechanics of each signal so the reader understands WHY signals \
 point in a given direction, not just WHAT the numbers show.
+{pre_decision_block}
 
 === SIGNAL INTERPRETATION RULES ===
 RSI zones:
@@ -331,30 +355,36 @@ If no category qualifies, write: "No significant risk factors identified in curr
 ---
 
 ### Trading perspective
-Synthesise all three horizons. Apply these calibration rules:
+Use the PRE-COMPUTED ENTRY SIGNAL (injected above) as the baseline decision.
+Apply the override rules below in strict order — stop at the first rule that fires.
+If no override fires, the baseline decision stands unchanged.
 
-Entry decision:
-  'Yes' — 2 or 3 horizons clearly aligned in the same direction
-  'Wait for confirmation' — mixed or ambiguous signals across horizons
-  'No' — opposing signals, high ATR, or no coherent structure
-  FOMC override: if next FOMC is within 7 days, default to 'Wait for confirmation' \
-  regardless of signal alignment — rate decisions create binary event risk.
+Override rules (apply in order, stop at first match):
+  Override 1 — FOMC event:
+      If news analysis shows next FOMC is within 7 days →
+      downgrade one level: ENTER → 'Wait for confirmation'; WAIT → 'No'.
+      Reason: rate decisions create binary event risk that cannot be hedged technically.
 
-Risk Factor overrides (apply after FOMC override, before leverage calibration):
-  - Any factor at HIGH → cap entry decision one level lower:
-      Yes → 'Wait for confirmation'; Wait → No
-    Exception: all three horizons perfectly aligned AND only Liquidity is HIGH
-    (not Regulation or Exchange) → entry allowed but position size must be reduced.
-  - Regulation HIGH → treat as binary event risk identical to FOMC within 7 days:
-    force 'Wait for confirmation', cap leverage one tier lower than calibration suggests.
-  - Exchange incident HIGH → include in **Why not now** / **Why this leverage?**:
-    "Counterparty risk active — reduce position size by 50% regardless of leverage tier."
-  - Liquidity HIGH → include in **How to enter** / **What to watch**:
-    "Use limit orders only; widen stop-loss to account for spread and slippage."
-  - Volatility spike HIGH → include in **How to enter** / **What to watch**:
-    "Gap risk on stops — set stop-loss wider than ATR suggests, size down accordingly."
-  - Two or more factors at HIGH simultaneously → default to No/Wait regardless of
-    horizon alignment.
+  Override 2 — Two or more HIGH risk factors simultaneously:
+      Default to 'No' regardless of horizon alignment.
+
+  Override 3 — Single HIGH risk factor:
+      Downgrade one level: ENTER → 'Wait for confirmation'; WAIT → 'No'.
+      Exception: 3/3 horizons aligned AND only Liquidity is HIGH (not Regulation or
+      Exchange) → baseline stands, but position size must be reduced by 50%.
+      - Regulation HIGH → also treat as binary event risk (same as FOMC within 7 days):
+        cap leverage one tier below calibration.
+      - Exchange incident HIGH → add to output:
+        "Counterparty risk active — reduce position size by 50% regardless of leverage tier."
+      - Liquidity HIGH → add to output:
+        "Use limit orders only; widen stop-loss for spread and slippage."
+      - Volatility spike HIGH → add to output:
+        "Gap risk on stops — set stop-loss wider than ATR suggests, size down accordingly."
+
+CRITICAL — MEDIUM risk factors: MEDIUM severity does NOT change the entry decision.
+Include MEDIUM factors in the Risk Factors section with position-sizing guidance only.
+Do NOT use MEDIUM factors as justification for overriding the baseline or for adding
+extra conservatism to the trading decision.
 
 Direction: Long (bullish) / Short (bearish) / No clear direction
 

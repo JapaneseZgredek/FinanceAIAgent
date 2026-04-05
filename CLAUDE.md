@@ -47,6 +47,9 @@ Finance_AI_Agent/
 │   ├── TECHNICAL_ANALYSIS.md      # Guide on technical indicators
 │   └── ROADMAP.md                 # Prioritized feature roadmap
 │
+├── reports/                       # Auto-created saved reports (git-ignored)
+│   └── YYYY-MM-DD_<SYMBOL>.md     # One file per symbol per day
+│
 └── .cache/                        # Auto-created local cache (git-ignored)
     ├── alpha_vantage/             # Price data cache (TTL: 1-6h)
     └── claude_news/               # News results cache (TTL: 30min)
@@ -57,10 +60,13 @@ Finance_AI_Agent/
 ```
 python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol))
   → Step 0: Alpha Vantage fetch + indicators (asyncio.to_thread, no LLM)
+            compute_pre_decision() → deterministic ENTER/WAIT/NO from indicators
   → Steps 1+2: concurrent via asyncio.gather
       → Step 1: claude --print --allowedTools WebSearch,WebFetch  (news search)
       → Step 2: claude --print  (price analysis, no web access)
   → Step 3: claude --print  (final report synthesis, no web access)
+            pre_decision injected as hard constraint into prompt
+  → _save_report() → reports/YYYY-MM-DD_<SYMBOL>.md
 ```
 
 ### Pipeline Architecture
@@ -70,7 +76,7 @@ Steps 1 and 2 run concurrently via `asyncio.gather` — wall time = `max(step1, 
 2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage
 3. **Final report** — No web access; synthesizes news and price analysis into a structured report with: short/medium/long-term horizons, a Risk Factors section (regulation / exchange incidents / liquidity / volatility spikes, medium/high severity only, with expected market behavior per category), and a Trading perspective with two mutually exclusive output paths — PATH A (Enter now) or PATH B (Wait/No) — where active HIGH risk factors override the entry decision and inject execution constraints
 
-Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop.
+Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop. Step 0 also runs `compute_pre_decision()` — a deterministic Python function that derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from indicator thresholds before any LLM call. The result is injected into the Step 3 prompt as a hard constraint; the LLM may only override it via explicit rules (FOMC within 7 days, HIGH risk factor). MEDIUM risk factors do not affect the decision. This eliminates non-deterministic trading decisions across runs on identical data.
 
 ## Code Style & Conventions
 
@@ -136,6 +142,8 @@ Config is validated at startup with type coercion and range checking. Invalid va
 - **Caching**: File-based JSON cache with TTL per data source. Falls back to stale cache on API failure.
 - **Retry**: Exponential backoff (1s → 2s → 4s → 8s, max 30s) with ±25% jitter on Alpha Vantage calls.
 - **Local pre-processing**: All technical indicators (SMA, EMA, RSI, MACD, ATR) are computed in Python before any LLM call — Claude receives a compact formatted summary, not raw time series.
+- **Deterministic pre-scoring**: `compute_pre_decision()` in `price_tools.py` derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from objective indicator thresholds (MACD trend, price vs SMA20/50/200, ATR phase) before Step 3 is called. Injected as a hard constraint into the prompt — eliminates LLM non-determinism on the most critical output field.
+- **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` via `_save_report()` in `main.py`. Same-day re-run overwrites the file.
 - **Graceful degradation**: Network failure → cache fallback → warn and continue.
 
 ## Testing

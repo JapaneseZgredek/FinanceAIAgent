@@ -61,6 +61,11 @@ test-results.xml
 .cache/
 
 # =========================
+# Generated reports
+# =========================
+reports/
+
+# =========================
 # Claude Code — local-only settings (personal, not shared with team)
 # =========================
 .claude/settings.local.json

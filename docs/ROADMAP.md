@@ -109,8 +109,11 @@ Prioritized list of improvements to grow this PoC into a production-ready system
 
 ## Phase 3 — Output, Formatting & Persistence
 
-16. ⬚ **Save reports to disk**
-    - `reports/YYYY-MM-DD_<SYMBOL>.md` — clean history of runs.
+16. ✅ **Save reports to disk**
+    - Every successful run auto-saves to `reports/YYYY-MM-DD_<SYMBOL>.md`.
+    - Same-day re-run for the same symbol overwrites the file (latest run wins).
+    - `reports/` is git-ignored — generated output, not source artefacts.
+    - *`main.py` — `_save_report()`*
 
 17. ⬚ **JSON output mode**
     - Structured output: events, sentiment, metrics, prediction, sources.
