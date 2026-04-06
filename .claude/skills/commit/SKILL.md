@@ -80,3 +80,4 @@ Keep lines under 80 chars.
 - DO NOT ADD CLAUDE AS CO-AUTHOR
 - DO NOT ask for confirmation — just commit
 - If there is nothing to commit, say so and stop
+- **Never reference ROADMAP point numbers** (e.g. "ROADMAP #18") in commit messages — describe the feature itself
