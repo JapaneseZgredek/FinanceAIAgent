@@ -36,7 +36,7 @@ Finance_AI_Agent/
 │   └── ROADMAP.md                  #    └── Prioritized feature roadmap
 │
 ├── reports/                        # 📄 Saved reports (auto-created, gitignored)
-│   └── YYYY-MM-DD_<SYMBOL>.md      #    └── One file per symbol per day
+│   └── YYYY-MM-DD_<SYMBOL>.md|json #    └── One file per symbol per day (.md or .json)
 │
 ├── .cache/                         # 📦 Local cache (auto-created, gitignored)
 │   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
@@ -86,7 +86,7 @@ User Input (BTC) → main.py → asyncio.run(claude_runner.run())
                             Final Report (stdout)
                                      │
                                      ▼
-                    reports/YYYY-MM-DD_<SYMBOL>.md (auto-saved)
+                    reports/YYYY-MM-DD_<SYMBOL>.md|json (auto-saved)
 ```
 
 
@@ -143,7 +143,7 @@ This prevents "prompt bloat" while providing rich technical context for the LLM.
 Three `claude --print` subprocess calls — Steps 1 and 2 run concurrently:
 1. **News search** (WebSearch + WebFetch enabled) ┐ concurrent via
 2. **Price analysis** (no web access)             ┘ `asyncio.gather`
-3. **Final report** — synthesises both, rendered in the chosen language
+3. **Final report** — synthesises both; rendered in the chosen language (markdown mode) or as a structured JSON object (json mode)
 
 `ClaudeClient.run()` uses `asyncio.create_subprocess_exec` — the event loop stays
 unblocked during subprocess execution, enabling concurrency and FastAPI compatibility.
@@ -199,8 +199,10 @@ python3 main.py
 You will be prompted:
 ```text
 Which cryptocurrency symbol do you want to analyze (e.g. BTC)?
+Report language (e.g. Polish, English, Spanish) [Polish]:
+Output format (markdown, json) [markdown]:
 ```
-The final report is printed to sdtout
+The final report is printed to stdout and saved to `reports/`.
 
 ---
 

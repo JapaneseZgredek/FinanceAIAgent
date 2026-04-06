@@ -466,3 +466,213 @@ for the next 1–2 weeks]
 *This report is analytical in nature. It does not constitute financial advice.*
 
 Do NOT search the web. Use only the provided analyses. Respond in {language}."""
+
+
+def build_json_report_prompt(
+    symbol: str,
+    news_analysis: str,
+    price_analysis: str,
+    today: str,
+    pre_decision: str = "",
+) -> str:
+    """
+    Build the Step 3 prompt: synthesise news + price analysis into a structured JSON report.
+
+    Variant of build_final_report_prompt() for machine consumption — always English,
+    no markdown, strict JSON schema. Used when output_format="json" is requested.
+
+    Args:
+        symbol: Cryptocurrency ticker.
+        news_analysis: Output from Step 1 (English).
+        price_analysis: Output from Step 2 (English).
+        today: Current date string (YYYY-MM-DD).
+        pre_decision: Deterministic entry decision from compute_pre_decision().
+                      Injected as a hard constraint (same rules as markdown variant).
+
+    Returns:
+        Prompt string for Claude CLI (no web access). Output is a single JSON object.
+    """
+    pre_decision_block = ""
+    if pre_decision:
+        pre_decision_block = f"""
+=== PRE-COMPUTED ENTRY SIGNAL (PYTHON — DETERMINISTIC) ===
+The trading entry decision below was computed in Python from the raw technical
+indicators BEFORE this prompt was generated. It uses objective, threshold-based
+rules with no subjective interpretation. Treat it as the baseline decision for
+the "prediction" and "trading" fields — you MUST use it unless a specific override
+rule applies (listed below).
+
+{pre_decision}
+
+Do NOT override this baseline because of "waning momentum" or "ambiguous short-term
+signals". If 2+ horizons are structurally aligned, the baseline stands. The MACD
+histogram narrowing while still negative is EXPECTED bearish behavior — it does NOT
+make the signal ambiguous. Only FOMC proximity or HIGH risk factors may trigger an override.
+
+"""
+
+    return f"""\
+You are a professional cryptocurrency market analyst. Synthesise the two analyses
+below into a single structured JSON object. Output ONLY valid JSON — no markdown,
+no code fences, no explanation text before or after.
+{pre_decision_block}
+=== SIGNAL INTERPRETATION RULES ===
+RSI zones:
+  < 30: extreme oversold | 30–40: oversold | 40–60: neutral | 60–70: overbought | > 70: extreme overbought
+
+MACD:
+  Above signal line: buying momentum increasing ("above_signal")
+  Below signal line: selling momentum increasing ("below_signal")
+
+Volume:
+  Above 30d average: confirms the move — strong conviction ("above")
+  Below 30d average: weak conviction ("below")
+
+Moving averages:
+  Price above SMA200: long-term bullish structure ("above")
+  Price below SMA200: long-term bearish structure ("below")
+
+ATR:
+  Rising: volatility expanding ("expanding")
+  Falling: volatility compressing ("contracting")
+
+=== INPUT DATA ===
+NEWS ANALYSIS:
+{news_analysis}
+
+TECHNICAL PRICE ANALYSIS:
+{price_analysis}
+
+=== OVERRIDE RULES FOR prediction.final_decision ===
+Apply in order, stop at first match. If none fires, final_decision == pre_decision.
+
+Override 1 — FOMC event:
+    If next FOMC is within 7 days → downgrade one level:
+    ENTER → WAIT, WAIT → NO.
+    Set override_applied=true, override_reason="FOMC within 7 days".
+
+Override 2 — Two or more HIGH risk factors simultaneously:
+    final_decision = "NO", override_applied=true,
+    override_reason="2+ HIGH risk factors: <categories>".
+
+Override 3 — Single HIGH risk factor:
+    Downgrade one level: ENTER → WAIT, WAIT → NO.
+    Exception: 3/3 horizons aligned AND only Liquidity is HIGH →
+    final_decision unchanged, but note it in override_reason.
+
+MEDIUM risk factors: do NOT change the decision. Do NOT set override_applied=true for MEDIUM.
+
+=== RISK FACTOR SEVERITY RULES ===
+Regulation:  medium=scrutiny/investigation, high=active enforcement/ban/delisting
+Exchange:    medium=unconfirmed rumors, high=confirmed hack/insolvency/withdrawal halt
+Liquidity:   medium=HIGH volatility regime OR ATR rising + volume below avg,
+             high=EXTREME volatility regime OR critically low volume
+Volatility:  medium=HIGH regime OR ATR rising with NORMAL regime,
+             high=EXTREME regime OR ATR rising with HIGH/EXTREME regime
+
+=== OUTPUT JSON SCHEMA ===
+Return exactly this structure. Use null for any field where data is unavailable.
+All string enum values must match exactly (case-sensitive).
+
+{{
+  "symbol": "{symbol}",
+  "date": "{today}",
+
+  "sentiment": {{
+    "label": "Positive" | "Negative" | "Mixed",
+    "summary": "<one sentence>"
+  }},
+
+  "events": [
+    {{
+      "description": "<event description>",
+      "source": "<domain.com>",
+      "date": "<YYYY-MM-DD or null>",
+      "tier": <1 | 2>,
+      "corroborated": <true | false>
+    }}
+  ],
+
+  "metrics": {{
+    "rsi": <number | null>,
+    "macd_position": "above_signal" | "below_signal" | null,
+    "price_vs_sma20": "above" | "below" | null,
+    "price_vs_sma50": "above" | "below" | null,
+    "price_vs_sma200": "above" | "below" | null,
+    "atr_direction": "expanding" | "contracting" | null,
+    "volatility_regime": "LOW" | "NORMAL" | "HIGH" | "EXTREME" | null,
+    "volume_vs_30d_avg": "above" | "below" | null
+  }},
+
+  "horizons": {{
+    "short_term": {{
+      "signal_state": "<specific indicator values>",
+      "direction": "<directional tendency in plain language>",
+      "reasoning": "<2-4 sentences explaining the mechanics>"
+    }},
+    "medium_term": {{
+      "signal_state": "<specific indicator values>",
+      "direction": "<directional tendency>",
+      "reasoning": "<2-4 sentences>"
+    }},
+    "long_term": {{
+      "signal_state": "<specific indicator values>",
+      "direction": "<directional tendency>",
+      "reasoning": "<2-4 sentences>"
+    }}
+  }},
+
+  "macro": {{
+    "fed_funds_rate": "<X.XX% | null>",
+    "next_fomc_date": "<YYYY-MM-DD | null>",
+    "fomc_days_away": <integer | null>,
+    "expected_action": "hold" | "cut" | "hike" | null,
+    "backdrop_summary": "<2-3 sentences | null>"
+  }},
+
+  "risk_factors": [
+    {{
+      "category": "regulation" | "exchange" | "liquidity" | "volatility",
+      "severity": "medium" | "high",
+      "signal_basis": "<one sentence citing the specific signal>",
+      "expected_behavior": "<one sentence in plain language>"
+    }}
+  ],
+
+  "prediction": {{
+    "pre_decision": "ENTER" | "WAIT" | "NO",
+    "final_decision": "ENTER" | "WAIT" | "NO",
+    "override_applied": <true | false>,
+    "override_reason": "<string | null>"
+  }},
+
+  "trading": {{
+    "direction": "long" | "short" | "unclear",
+    "leverage_min": <integer | null>,
+    "leverage_max": <integer | null>,
+    "entry_notes": "<order type, price level, stop-loss placement | null>",
+    "wait_conditions": "<exact trigger required before entry | null>"
+  }},
+
+  "watch_next": {{
+    "macro_calendar": ["<bullet>"],
+    "macro_triggers": ["<bullet>"],
+    "etf_flows": ["<bullet>"],
+    "on_chain": ["<bullet>"],
+    "technical_triggers": ["<bullet>"]
+  }},
+
+  "sources": [
+    {{ "domain": "<domain.com>", "tier": <1 | 2> }}
+  ]
+}}
+
+Rules:
+- risk_factors: include ONLY medium or high severity. Empty array [] if none qualify.
+- watch_next subcategory arrays: empty array [] if no relevant signal in input data.
+- sources: deduplicated list of all domains cited in events.
+- trading.entry_notes: fill when final_decision is ENTER, null otherwise.
+- trading.wait_conditions: fill when final_decision is WAIT or NO, null otherwise.
+- trading.leverage_min / leverage_max: fill for ENTER or WAIT, null for NO.
+
+Do NOT search the web. Use only the provided analyses. Output ONLY the JSON object."""

@@ -48,7 +48,7 @@ Finance_AI_Agent/
 │   └── ROADMAP.md                 # Prioritized feature roadmap
 │
 ├── reports/                       # Auto-created saved reports (git-ignored)
-│   └── YYYY-MM-DD_<SYMBOL>.md     # One file per symbol per day
+│   └── YYYY-MM-DD_<SYMBOL>.md|json  # One file per symbol per day (.md or .json)
 │
 └── .cache/                        # Auto-created local cache (git-ignored)
     ├── alpha_vantage/             # Price data cache (TTL: 1-6h)
@@ -66,7 +66,8 @@ python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol)
       → Step 2: claude --print  (price analysis, no web access)
   → Step 3: claude --print  (final report synthesis, no web access)
             pre_decision injected as hard constraint into prompt
-  → _save_report() → reports/YYYY-MM-DD_<SYMBOL>.md
+            output_format="json" → build_json_report_prompt() + _validate_json_output()
+  → _save_report() → reports/YYYY-MM-DD_<SYMBOL>.md|json
 ```
 
 ### Pipeline Architecture
@@ -74,7 +75,7 @@ python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol)
 Steps 1 and 2 run concurrently via `asyncio.gather` — wall time = `max(step1, step2)`:
 1. **News search** — WebSearch + WebFetch enabled; searches Tier 1 sources first via `site:` operator queries, falls back to Tier 2 only if needed; enforces freshness, credibility, specificity, and corroboration checks before including any event
 2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage
-3. **Final report** — No web access; synthesizes news and price analysis into a structured report with: short/medium/long-term horizons, a Risk Factors section (regulation / exchange incidents / liquidity / volatility spikes, medium/high severity only, with expected market behavior per category), and a Trading perspective with two mutually exclusive output paths — PATH A (Enter now) or PATH B (Wait/No) — where active HIGH risk factors override the entry decision and inject execution constraints
+3. **Final report** — No web access; synthesizes news and price analysis into a structured report with: short/medium/long-term horizons, a Risk Factors section (regulation / exchange incidents / liquidity / volatility spikes, medium/high severity only, with expected market behavior per category), and a Trading perspective with two mutually exclusive output paths — PATH A (Enter now) or PATH B (Wait/No) — where active HIGH risk factors override the entry decision and inject execution constraints. Supports two output formats: `markdown` (default, rendered in chosen language) and `json` (always English, structured schema for downstream processing)
 
 Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop. Step 0 also runs `compute_pre_decision()` — a deterministic Python function that derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from indicator thresholds before any LLM call. The result is injected into the Step 3 prompt as a hard constraint; the LLM may only override it via explicit rules (FOMC within 7 days, HIGH risk factor). MEDIUM risk factors do not affect the decision. This eliminates non-deterministic trading decisions across runs on identical data.
 
@@ -143,7 +144,8 @@ Config is validated at startup with type coercion and range checking. Invalid va
 - **Retry**: Exponential backoff (1s → 2s → 4s → 8s, max 30s) with ±25% jitter on Alpha Vantage calls.
 - **Local pre-processing**: All technical indicators (SMA, EMA, RSI, MACD, ATR) are computed in Python before any LLM call — Claude receives a compact formatted summary, not raw time series.
 - **Deterministic pre-scoring**: `compute_pre_decision()` in `price_tools.py` derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from objective indicator thresholds (MACD trend, price vs SMA20/50/200, ATR phase) before Step 3 is called. Injected as a hard constraint into the prompt — eliminates LLM non-determinism on the most critical output field.
-- **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` via `_save_report()` in `main.py`. Same-day re-run overwrites the file.
+- **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` (markdown) or `reports/YYYY-MM-DD_<SYMBOL>.json` (JSON mode) via `_save_report()` in `main.py`. Same-day re-run overwrites the file.
+- **JSON output mode**: `run()` accepts `output_format: Literal["markdown", "json"]` (default `"markdown"`). In JSON mode, `build_json_report_prompt()` requests a structured object instead of markdown — same override rules apply (PRE-COMPUTED ENTRY SIGNAL, FOMC, HIGH risk factors). `_validate_json_output()` strips accidental code fences, validates with `json.loads()`, and raises `FinanceAgentError` on parse failure. JSON is always English (machine consumption — `language` param ignored).
 - **Graceful degradation**: Network failure → cache fallback → warn and continue.
 
 ## Testing

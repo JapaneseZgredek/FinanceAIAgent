@@ -115,9 +115,15 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - `reports/` is git-ignored — generated output, not source artefacts.
     - *`main.py` — `_save_report()`*
 
-17. ⬚ **JSON output mode**
+17. ✅ **JSON output mode**
     - Structured output: events, sentiment, metrics, prediction, sources.
     - Enables downstream processing and dashboards.
+    - `output_format: Literal["markdown", "json"] = "markdown"` added to `run()` — fully backward-compatible.
+    - `build_json_report_prompt()` in `prompts.py`: same override rules as markdown (PRE-COMPUTED ENTRY SIGNAL, FOMC proximity, HIGH risk factors); output always English for machine consumption.
+    - `_validate_json_output()` in `claude_runner.py`: strips accidental code fences, validates with `json.loads()`, re-serialises with `indent=2`; raises `FinanceAgentError` on invalid JSON.
+    - CLI prompts for format selection; `_save_report()` writes `.json` extension when format is json.
+    - JSON schema keys: `symbol`, `date`, `sentiment`, `events`, `metrics`, `horizons`, `macro`, `risk_factors`, `prediction` (with `pre_decision` + `final_decision` + `override_applied`), `trading`, `watch_next`, `sources`.
+    - *`app/prompts.py` — `build_json_report_prompt()`, `app/claude_runner.py` — `_validate_json_output()`, `main.py` — `_save_report()`*
 
 18. ⬚ **HTML / PDF export**
     - Render Markdown → HTML → PDF (`WeasyPrint` or similar).
