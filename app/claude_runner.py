@@ -11,17 +11,24 @@ fetched concurrently before any Claude call is made.
 """
 
 import asyncio
+import json
 import logging
 import os
 import re
 from datetime import datetime
+from typing import Literal
 
 from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.clients.cache import CacheManager
 from app.clients.claude_client import ClaudeClient
 from app.clients.macro_client import MacroClient
 from app import config
-from app.prompts import build_news_prompt, build_price_analysis_prompt, build_final_report_prompt
+from app.prompts import (
+    build_news_prompt,
+    build_price_analysis_prompt,
+    build_final_report_prompt,
+    build_json_report_prompt,
+)
 from app.tools.price_tools import get_formatted_price_data
 from app.utils.errors import FinanceAgentError
 
@@ -40,6 +47,7 @@ _SYMBOL_RE = re.compile(r"^[A-Z0-9]{1,20}$")
 async def run(
     symbol: str,
     language: str = "Polish",
+    output_format: Literal["markdown", "json"] = "markdown",
     *,
     alpha_client: AlphaVantageClient | None = None,
     claude_client: ClaudeClient | None = None,
@@ -55,23 +63,27 @@ async def run(
       0. Fetch price data + macro indicators locally (no LLM)
       1. News search via Claude CLI + WebSearch  } concurrent —
       2. Technical + macro analysis via Claude CLI} asyncio.gather
-      3. Final report via Claude CLI              (output in `language`)
+      3. Final report via Claude CLI              (output in `language` or JSON)
 
     Args:
         symbol: Cryptocurrency ticker (e.g., "BTC", "ETH", "SOL").
         language: Output language for the final report (e.g., "Polish",
-                  "English", "Spanish"). Passed per-request so FastAPI
-                  callers can set it dynamically per request.
+                  "English", "Spanish"). Ignored when output_format="json"
+                  (JSON output is always English for machine consumption).
+        output_format: "markdown" (default) for the human-readable report;
+                       "json" for a structured JSON object suitable for
+                       downstream processing and dashboards.
         alpha_client: Optional AlphaVantageClient for dependency injection.
         claude_client: Optional ClaudeClient for dependency injection.
         macro_client: Optional MacroClient for dependency injection.
                       If None and FRED_API_KEY is set, one is created automatically.
 
     Returns:
-        Formatted market report as a string.
+        Formatted market report as a string (markdown) or a JSON string.
 
     Raises:
-        FinanceAgentError: If the symbol is invalid or any pipeline step fails.
+        FinanceAgentError: If the symbol is invalid, any pipeline step fails,
+                           or Claude returns invalid JSON in json output mode.
     """
     symbol = symbol.upper().strip()
 
@@ -88,7 +100,10 @@ async def run(
     if macro_client is None and config.FRED_API_KEY:
         macro_client = MacroClient(config.FRED_API_KEY)
 
-    logger.info("Starting analysis for %s (output language: %s)", symbol, language)
+    logger.info(
+        "Starting analysis for %s (format: %s, language: %s)",
+        symbol, output_format, language if output_format == "markdown" else "n/a (json mode)",
+    )
 
     # Step 0: price data + macro indicators — both are blocking I/O, run concurrently
     (price_data, pre_decision), macro_context = await asyncio.gather(
@@ -110,7 +125,10 @@ async def run(
     )
 
     # Step 3: final report — depends on both outputs above
-    return await _get_final_report(symbol, news_analysis, price_analysis, language, pre_decision, claude_client)
+    return await _get_final_report(
+        symbol, news_analysis, price_analysis, language, pre_decision, claude_client,
+        output_format=output_format,
+    )
 
 
 # =============================================================================
@@ -208,28 +226,46 @@ async def _get_final_report(
     language: str,
     pre_decision: str,
     claude_client: ClaudeClient,
+    output_format: Literal["markdown", "json"] = "markdown",
 ) -> str:
     """
     Synthesise news and price analysis into the final market report. (Call 3 of 3)
 
-    This is the only step whose output is shown to the user, so it renders in
-    the requested language. No web access — Claude combines the two provided analyses.
+    In markdown mode the output renders in the requested language. In json mode
+    the output is always English — a single JSON object validated with json.loads().
+    No web access in either mode.
 
     Args:
         symbol: Cryptocurrency ticker.
         news_analysis: Output from _get_news_analysis() (English).
         price_analysis: Output from _get_price_analysis() (English).
-        language: Output language for the report (e.g., "Polish", "English", "Spanish").
+        language: Output language for the report (ignored in json mode).
         pre_decision: Deterministic entry decision from compute_pre_decision() — injected
                       as a hard constraint into the prompt to prevent non-deterministic
                       LLM decision-making across runs on the same data.
         claude_client: ClaudeClient instance to use for the subprocess call.
+        output_format: "markdown" (default) or "json".
 
     Returns:
-        Formatted market report string in the requested language.
+        Formatted market report string (markdown) or validated JSON string.
+
+    Raises:
+        FinanceAgentError: If json mode is requested and Claude returns invalid JSON.
     """
-    logger.info("Generating final report for %s", symbol)
+    logger.info("Generating final report for %s (format: %s)", symbol, output_format)
     today = datetime.now().strftime("%Y-%m-%d")
+
+    if output_format == "json":
+        prompt = build_json_report_prompt(
+            symbol=symbol,
+            news_analysis=news_analysis,
+            price_analysis=price_analysis,
+            today=today,
+            pre_decision=pre_decision,
+        )
+        raw = await claude_client.run(prompt)
+        return _validate_json_output(raw, symbol)
+
     prompt = build_final_report_prompt(
         symbol=symbol,
         news_analysis=news_analysis,
@@ -239,3 +275,39 @@ async def _get_final_report(
         pre_decision=pre_decision,
     )
     return await claude_client.run(prompt)
+
+
+def _validate_json_output(raw: str, symbol: str) -> str:
+    """
+    Validate that Claude's output is parseable JSON and return the canonical string.
+
+    Strips accidental markdown code fences (```json ... ```) that Claude sometimes
+    adds despite instructions, then attempts json.loads(). Raises FinanceAgentError
+    with an actionable message if parsing fails.
+
+    Args:
+        raw: Raw string returned by Claude CLI.
+        symbol: Ticker used only for the error message context.
+
+    Returns:
+        Validated JSON string (re-serialised for consistent formatting).
+
+    Raises:
+        FinanceAgentError: If the output cannot be parsed as JSON.
+    """
+    cleaned = raw.strip()
+    # Strip accidental code fences: ```json\n...\n``` or ```\n...\n```
+    if cleaned.startswith("```"):
+        cleaned = re.sub(r"^```(?:json)?\s*", "", cleaned)
+        cleaned = re.sub(r"\s*```$", "", cleaned)
+        cleaned = cleaned.strip()
+
+    try:
+        parsed = json.loads(cleaned)
+    except json.JSONDecodeError as exc:
+        raise FinanceAgentError(
+            message=f"JSON report for {symbol} could not be parsed: {exc}",
+            hint="Claude returned output that is not valid JSON. Try re-running the analysis.",
+        ) from exc
+
+    return json.dumps(parsed, ensure_ascii=False, indent=2)
