@@ -53,6 +53,12 @@ Finance_AI_Agent/
     │   ├── alpha_vantage_client.py #    └── Price data API (with caching + retry)
     │   └── claude_client.py        #    └── Async Claude CLI subprocess wrapper
     │
+    ├── exporters/                  # 📤 Report export (HTML / PDF)
+    │   ├── report_exporter.py      #    └── export_report() — standalone, FastAPI-ready
+    │   └── templates/              #    └── HTML template + CSS (separate files)
+    │       ├── report.html         #         └── Page structure with placeholders
+    │       └── report.css          #         └── Premium dark-navy design; Polish CSS comments
+    │
     ├── tools/                      # 🔧 Data preparation
     │   └── price_tools.py          #    └── Price stats + technical indicators
     │
@@ -196,13 +202,23 @@ From the project root:
 python3 main.py
 ```
 
-You will be prompted:
+An interactive menu is shown:
 ```text
-Which cryptocurrency symbol do you want to analyze (e.g. BTC)?
-Report language (e.g. Polish, English, Spanish) [Polish]:
-Output format (markdown, json) [markdown]:
+  [a] Analyze a new symbol
+  [e] Export an existing saved report
+  [q] Quit
 ```
-The final report is printed to stdout and saved to `reports/`.
+
+After analysis completes, a post-analysis menu appears:
+```text
+  [e] Export report (HTML / PDF)
+  [n] Analyze another symbol
+  [m] Main menu
+  [q] Quit
+```
+
+The final report is printed to stdout and auto-saved to `reports/`.  
+Use `[e]` to export any saved report to HTML or PDF without re-running the pipeline.
 
 ---
 

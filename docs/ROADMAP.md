@@ -125,8 +125,15 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - JSON schema keys: `symbol`, `date`, `sentiment`, `events`, `metrics`, `horizons`, `macro`, `risk_factors`, `prediction` (with `pre_decision` + `final_decision` + `override_applied`), `trading`, `watch_next`, `sources`.
     - *`app/prompts.py` — `build_json_report_prompt()`, `app/claude_runner.py` — `_validate_json_output()`, `main.py` — `_save_report()`*
 
-18. ⬚ **HTML / PDF export**
-    - Render Markdown → HTML → PDF (`WeasyPrint` or similar).
+18. ✅ **HTML / PDF export**
+    - Standalone `export_report()` function — decoupled from pipeline, ready for FastAPI.
+    - Markdown → HTML via `python-markdown` (extensions: `tables`, `fenced_code`, `nl2br`).
+    - HTML → PDF via `WeasyPrint` (lazily imported — optional heavy dep).
+    - Templates in separate files: `report.html` (structure) + `report.css` (styling).
+    - CSS: premium dark-navy design, custom bullet markers, gradient-free palette, Polish comments on every rule.
+    - `_render_html()` uses chained `.replace()` — avoids `KeyError` from CSS curly braces.
+    - Always writes `.html` first; converts to `.pdf` if requested.
+    - *`app/exporters/report_exporter.py` — `export_report()`, `app/exporters/templates/`*
 
 19. ⬚ **Price charts**
     - Generate: 90-day price chart, volatility chart, MA overlay (matplotlib / plotly).

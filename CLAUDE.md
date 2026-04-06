@@ -17,6 +17,7 @@ Finance AI Agent is a Python-based cryptocurrency market analysis system that ge
 | Data Processing | pandas (>=2.0.0), numpy |
 | HTTP | requests (>=2.31.0) |
 | Configuration | python-dotenv (>=1.0.0), `.env` file |
+| Export | markdown (>=3.5.0), weasyprint (>=62.0) |
 
 ## Project Architecture
 
@@ -34,6 +35,12 @@ Finance_AI_Agent/
 │   ├── clients/                   # External API integrations
 │   │   ├── cache.py               # Generic TTL-aware file-based cache
 │   │   └── alpha_vantage_client.py  # Crypto price API client
+│   │
+│   ├── exporters/                 # Report export (HTML / PDF)
+│   │   ├── report_exporter.py     # export_report() — standalone, FastAPI-ready
+│   │   └── templates/             # Separate template files (not hardcoded strings)
+│   │       ├── report.html        # Page structure with {symbol}/{css}/{body} placeholders
+│   │       └── report.css         # Premium dark-navy design; Polish CSS comments
 │   │
 │   ├── tools/                     # Data preparation tools
 │   │   └── price_tools.py         # Price stats, technical indicators, trend summary
@@ -146,6 +153,7 @@ Config is validated at startup with type coercion and range checking. Invalid va
 - **Deterministic pre-scoring**: `compute_pre_decision()` in `price_tools.py` derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from objective indicator thresholds (MACD trend, price vs SMA20/50/200, ATR phase) before Step 3 is called. Injected as a hard constraint into the prompt — eliminates LLM non-determinism on the most critical output field.
 - **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` (markdown) or `reports/YYYY-MM-DD_<SYMBOL>.json` (JSON mode) via `_save_report()` in `main.py`. Same-day re-run overwrites the file.
 - **JSON output mode**: `run()` accepts `output_format: Literal["markdown", "json"]` (default `"markdown"`). In JSON mode, `build_json_report_prompt()` requests a structured object instead of markdown — same override rules apply (PRE-COMPUTED ENTRY SIGNAL, FOMC, HIGH risk factors). `_validate_json_output()` strips accidental code fences, validates with `json.loads()`, and raises `FinanceAgentError` on parse failure. JSON is always English (machine consumption — `language` param ignored).
+- **HTML/PDF export**: `export_report()` in `app/exporters/report_exporter.py` is a standalone callable — no dependency on the pipeline or `main.py`. Templates (HTML structure + CSS) live in separate files under `app/exporters/templates/`. `_render_html()` uses chained `.replace()` instead of `.format()` to avoid `KeyError` from CSS curly braces. `weasyprint` is imported lazily inside the function (optional heavy dep with system library requirements); `markdown` is imported at module level (required dep).
 - **Graceful degradation**: Network failure → cache fallback → warn and continue.
 
 ## Testing
