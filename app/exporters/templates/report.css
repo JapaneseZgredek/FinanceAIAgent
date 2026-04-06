@@ -1,0 +1,441 @@
+/*
+ * report.css — Arkusz stylów dla raportów Finance AI Agent
+ *
+ * Ładowany dynamicznie przez _load_template() i osadzany w <style> w <head>.
+ * Ten sam CSS jest używany przez WeasyPrint do generowania PDF — sekcja
+ * @media print nadpisuje reguły niezgodne z drukiem.
+ *
+ * Paleta kolorów:
+ *   --navy      #0f172a  — bardzo ciemny granat → tło headera
+ *   --navy-mid  #1e293b  — ciemny łupkowy → tekst, h3
+ *   --indigo    #6366f1  — indygo → akcent główny (border, badge, hr)
+ *   --amber     #f59e0b  — złoto-bursztyn → akcent drugorzędny (h2 border)
+ *   --teal      #14b8a6  — morski → header-bar gradient
+ *   --surface   #f8fafc  — bardzo jasny niebieskawoszary → tło body
+ *   --card      #ffffff  — biały → tło karty main
+ *   --muted     #64748b  — ciemnoszary → tekst drugorzędny
+ *   --border    #e2e8f0  — jasnoszary → linie, obramowania
+ */
+
+/* ── Import fontu z Google Fonts (self-hosted fallback) ─────────────────────
+ * Inter to czysty, nowoczesny font zaprojektowany do interfejsów.
+ * Wczytujemy go przez @import bezpośrednio z Google Fonts CDN.
+ * UWAGA: Wymaga połączenia z internetem. W trybie offline przeglądarka
+ * sięgnie po system-ui jako fallback — wygląd pozostanie dobry.
+ * WeasyPrint ignoruje @import z zewnętrznego URL i też używa fallbacku. */
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap');
+
+/* ── Reset ──────────────────────────────────────────────────────────────── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+/* ── Body ───────────────────────────────────────────────────────────────── */
+body {
+    font-family: "Inter", system-ui, -apple-system, "Segoe UI", sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: #1e293b;
+    background: #f8fafc;
+    /* Subtelny wzór kropek jako tło strony — nie krzykliwy, ale daje głębię */
+    background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
+    background-size: 24px 24px;
+}
+
+/* ── HEADER ─────────────────────────────────────────────────────────────── */
+header {
+    /* Gradient od głębokiego granatu do ciemnego łupkowego */
+    background: linear-gradient(135deg, #0f172a 0%, #1e293b 60%, #0f2027 100%);
+    color: #fff;
+    position: relative;
+    overflow: hidden;
+}
+
+/* Dekoracyjne kółko świetlne w tle headera — czysto CSS, bez obrazków.
+ * position: absolute + border-radius: 50% = koło.
+ * Rozmycie przez filter: blur() tworzy efekt "glow". */
+header::before {
+    content: "";
+    position: absolute;
+    top: -60px;
+    right: -60px;
+    width: 300px;
+    height: 300px;
+    background: radial-gradient(circle, rgba(99,102,241,0.25) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+header::after {
+    content: "";
+    position: absolute;
+    bottom: -40px;
+    left: 30%;
+    width: 200px;
+    height: 200px;
+    background: radial-gradient(circle, rgba(20,184,166,0.15) 0%, transparent 70%);
+    border-radius: 50%;
+    pointer-events: none;
+}
+
+/* Wrapper wewnętrzny — centruje zawartość i ustawia flex */
+.header-inner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 36px 48px 28px;
+    position: relative; /* żeby był nad ::before/::after */
+    z-index: 1;
+}
+
+/* Lewa strona headera: badge + symbol */
+.header-left {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+/* Mała etykieta "CRYPTO ANALYSIS" nad symbolem.
+ * border: 1px solid rgba(255,255,255,0.2) — przezroczyste białe obramowanie.
+ * letter-spacing: 0.15em — szerokie odstępy między literami (typowe dla badge). */
+.header-badge {
+    display: inline-block;
+    font-size: 0.65rem;
+    font-weight: 700;
+    letter-spacing: 0.15em;
+    color: #a5b4fc;
+    border: 1px solid rgba(165,180,252,0.4);
+    border-radius: 4px;
+    padding: 3px 10px;
+    width: fit-content;
+}
+
+/* Duży symbol kryptowaluty — to dominanta wizualna całego headera */
+.header-symbol {
+    font-size: 3.5rem;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    line-height: 1;
+    color: #ffffff;
+}
+
+/* Prawa strona headera: data i podtytuł */
+.header-right {
+    text-align: right;
+}
+
+.header-date {
+    font-size: 1.5rem;
+    font-weight: 700;
+    color: #f1f5f9;
+    letter-spacing: 0.02em;
+}
+
+.header-subtitle {
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.45);
+    margin-top: 4px;
+    letter-spacing: 0.03em;
+}
+
+/* Dolny pasek headera — cienka dekoracyjna linia w kolorze indygo.
+ * height: 4px — wyraźna, ale nie przytłaczająca. */
+.header-bar {
+    height: 4px;
+    background: #6366f1;
+}
+
+/* ── MAIN — karta z treścią ─────────────────────────────────────────────── */
+main {
+    max-width: 920px;
+    margin: 40px auto 64px;
+    background: #ffffff;
+    border-radius: 16px;
+    /* Wielowarstwowy cień: zewnętrzny (rozproszony) + wewnętrzny (subtelny) */
+    box-shadow:
+        0 4px 6px rgba(0,0,0,0.04),
+        0 20px 60px rgba(15,23,42,0.08);
+    padding: 48px 56px;
+    /* Subtelna linia u góry karty w kolorze indygo */
+    border-top: 3px solid #6366f1;
+}
+
+/* ── Nagłówki H2 ─────────────────────────────────────────────────────────
+ * Każda sekcja markdown ## staje się h2.
+ * Używamy pseudo-elementu ::before żeby zrobić kolorowy kwadrat/pik
+ * zamiast zwykłego border-left — daje ładniejszy efekt. */
+h1, h2 {
+    color: #0f172a;
+    font-size: 1.2rem;
+    font-weight: 700;
+    margin: 40px 0 16px;
+    padding: 14px 18px;
+    /* Subtelne tło sekcji — jednokolorowe, bez gradientu */
+    background: #f0f4ff;
+    border-radius: 10px;
+    /* Jeden kolor border-left — brak nakładających się pseudo-elementów */
+    border-left: 4px solid #6366f1;
+    letter-spacing: -0.01em;
+}
+
+/* H3 — podnagłówek sekcji */
+h3 {
+    color: #1e293b;
+    font-size: 1rem;
+    font-weight: 600;
+    margin: 28px 0 12px;
+    padding-left: 14px;
+    border-left: 3px solid #6366f1;
+    position: relative;
+}
+
+h4 {
+    font-size: 0.9rem;
+    font-weight: 600;
+    color: #475569;
+    margin: 18px 0 8px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+}
+
+/* ── Tekst ───────────────────────────────────────────────────────────────── */
+p { margin: 0 0 12px; color: #334155; }
+
+/* ── Listy nieuporządkowane (- bullet points) ────────────────────────────
+ * list-style: none — wyłączamy domyślne kółko przeglądarki.
+ * padding-left: 0 — usuwamy domyślne wcięcie przeglądarki (zarządzamy sami).
+ * Własny marker robimy przez ::before na każdym <li>:
+ *   position: absolute na ::before + position: relative na li
+ *   pozwala nam umieścić marker dokładnie tam gdzie chcemy,
+ *   niezależnie od wysokości tekstu w li. */
+ul {
+    list-style: none;
+    margin: 10px 0 16px 0;
+    padding-left: 0;
+}
+
+ul li {
+    position: relative;
+    /* padding-left: robi miejsce na nasz własny marker po lewej */
+    padding-left: 20px;
+    margin-bottom: 8px;
+    color: #334155;
+    line-height: 1.65;
+}
+
+/* Marker listy — mały indygo prostokąt-kreska.
+ * content: "" — pusty, bo kształt robimy przez width/height/background.
+ * position: absolute + top: 0.6em — wyrównujemy w pionie do linii bazowej
+ *   tekstu (0.6em ≈ połowa wysokości linii, więc kreska siedzi w połowie
+ *   pierwszej linii, nawet gdy li ma wiele linii tekstu). */
+ul li::before {
+    content: "";
+    position: absolute;
+    left: 0;
+    top: 0.62em;
+    width: 10px;
+    height: 2px;
+    background: #6366f1;
+    border-radius: 2px;
+}
+
+/* Listy zagnieżdżone (- punkt\n  - podpunkt) — mniejszy marker */
+ul ul {
+    margin: 6px 0 4px 16px;
+}
+ul ul li::before {
+    width: 6px;
+    background: #94a3b8;
+}
+
+/* ── Listy uporządkowane (1. 2. 3.) ─────────────────────────────────────
+ * Zostawiamy domyślne liczby przeglądarki, ale stylizujemy je kolorem. */
+ol {
+    margin: 10px 0 16px 20px;
+    padding-left: 4px;
+    color: #334155;
+}
+ol li {
+    margin-bottom: 8px;
+    padding-left: 4px;
+    line-height: 1.65;
+}
+ol li::marker {
+    color: #6366f1;
+    font-weight: 600;
+}
+
+/* Pogrubiony tekst — ciemny slate zamiast zwykłego czarnego */
+strong { color: #0f172a; font-weight: 600; }
+em { color: #475569; }
+
+/* ── Tabele ──────────────────────────────────────────────────────────────── */
+table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 20px 0 28px;
+    font-size: 0.91rem;
+    border-radius: 10px;
+    overflow: hidden; /* żeby border-radius działał na tabeli */
+    /* Cień pod tabelą */
+    box-shadow: 0 1px 8px rgba(15,23,42,0.06);
+}
+th {
+    background: #1e293b;
+    color: #e2e8f0;
+    text-align: left;
+    padding: 11px 16px;
+    font-weight: 600;
+    font-size: 0.84rem;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+}
+td {
+    padding: 10px 16px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: top;
+    color: #334155;
+}
+tr:last-child td { border-bottom: none; }
+tr:nth-child(even) td { background: #f8fafc; }
+tr:hover td {
+    background: #eff6ff;
+    transition: background 0.15s ease;
+}
+
+/* ── Bloki kodu ──────────────────────────────────────────────────────────── */
+pre, code {
+    font-family: "JetBrains Mono", "Fira Code", Consolas, monospace;
+    font-size: 0.855rem;
+}
+
+/* Inline code — np. `BTC` w tekście */
+code {
+    background: #f1f5f9;
+    color: #6366f1;
+    padding: 2px 7px;
+    border-radius: 5px;
+    border: 1px solid #e2e8f0;
+}
+
+/* Blok kodu ```...``` — ciemniejszy terminal-like */
+pre {
+    background: #0f172a;
+    color: #e2e8f0;
+    padding: 20px 24px;
+    border-radius: 10px;
+    overflow-x: auto;
+    margin: 16px 0 24px;
+    line-height: 1.6;
+    white-space: pre-wrap;
+    word-break: break-word;
+    /* Kolorowa linia po lewej — indygo gradient → morski */
+    border-left: 4px solid #6366f1;
+    box-shadow: 0 4px 20px rgba(15,23,42,0.15);
+}
+pre code {
+    background: none;
+    color: inherit;
+    padding: 0;
+    border: none;
+    font-size: inherit;
+}
+
+/* ── Linia pozioma ───────────────────────────────────────────────────────── */
+hr {
+    border: none;
+    height: 1px;
+    /* Gradient zanikający po bokach — bardziej elegancki niż zwykła linia */
+    background: linear-gradient(90deg, transparent, #cbd5e1 20%, #cbd5e1 80%, transparent);
+    margin: 32px 0;
+}
+
+/* ── Cytat (blockquote) ──────────────────────────────────────────────────── */
+blockquote {
+    margin: 16px 0;
+    padding: 14px 20px;
+    background: linear-gradient(135deg, #fefce8, #fffbeb);
+    border-left: 4px solid #f59e0b;
+    border-radius: 0 8px 8px 0;
+    color: #78350f;
+    font-style: italic;
+    box-shadow: 0 2px 8px rgba(245,158,11,0.08);
+}
+
+/* ── Linki ───────────────────────────────────────────────────────────────── */
+a {
+    color: #6366f1;
+    text-decoration: none;
+    border-bottom: 1px solid rgba(99,102,241,0.3);
+    transition: border-color 0.15s, color 0.15s;
+}
+a:hover {
+    color: #4f46e5;
+    border-bottom-color: #4f46e5;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+footer {
+    margin-top: 48px;
+    padding-top: 24px;
+    border-top: 1px solid #f1f5f9;
+    text-align: center;
+    font-size: 0.77rem;
+    color: #94a3b8;
+    line-height: 1.6;
+}
+
+/* ── JSON report block ───────────────────────────────────────────────────── */
+.json-report {
+    background: #0f172a;
+    color: #94a3b8;
+    border-left: 4px solid #6366f1;
+    border-radius: 10px;
+    padding: 24px 28px;
+    font-family: "JetBrains Mono", Consolas, monospace;
+    font-size: 0.84rem;
+    line-height: 1.65;
+    white-space: pre-wrap;
+    word-break: break-word;
+    overflow-x: auto;
+    box-shadow: 0 4px 20px rgba(15,23,42,0.15);
+}
+
+/* ── Tryb druku / PDF ────────────────────────────────────────────────────── */
+@media print {
+    /* Kasujemy wzór kropek na tle — nieładnie wychodzi w PDF */
+    body {
+        background: #fff;
+        background-image: none;
+        font-size: 13px;
+    }
+
+    /* Gradient headera — wymuszamy druk kolorów tła */
+    header {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+    header::before, header::after { display: none; }
+
+    /* Karta bez cienia i zaokrąglonych rogów — nie ma sensu na papierze */
+    main {
+        box-shadow: none;
+        border-radius: 0;
+        margin: 0;
+        padding: 28px 40px;
+        max-width: 100%;
+        border-top: none;
+    }
+
+    /* Pilnujemy żeby nagłówki i tabele nie łamały się przez stronę PDF */
+    h1, h2, h3 { page-break-after: avoid; }
+    table { page-break-inside: avoid; }
+    pre, .json-report { page-break-inside: avoid; }
+
+    /* Kolory tła sekcji — wymuszamy */
+    h1, h2 {
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+
+    /* Hover i tranzycje — zbędne w PDF */
+    tr:hover td { background: inherit; }
+    a { color: #1e293b; border-bottom: none; }
+}
