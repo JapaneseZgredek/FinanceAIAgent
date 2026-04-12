@@ -34,6 +34,7 @@ WeasyPrint system requirements (PDF only):
             (also needs: libpango-1.0-0 libcairo2 libgdk-pixbuf-2.0-0)
 """
 
+import base64
 import json
 import logging
 from datetime import date
@@ -126,17 +127,65 @@ def _to_html_body(content: str, source_format: Literal["markdown", "json"]) -> s
     )
 
 
-def _render_html(html_body: str, symbol: str, export_date: date) -> str:
+def _charts_to_html(chart_paths: list[Path]) -> str:
+    """Convert a list of PNG chart files to a self-contained HTML section.
+
+    Each PNG is read from disk, base64-encoded, and embedded as a
+    ``data:image/png;base64,…`` URI so the HTML file stays self-contained
+    (no external file references needed). WeasyPrint handles data URIs
+    natively, so PDF export works without extra steps.
+
+    An empty list produces an empty string — the ``{charts}`` placeholder
+    in the template is simply replaced with nothing.
+
+    Args:
+        chart_paths: Paths to PNG files produced by
+            :func:`app.charts.chart_generator.generate_price_charts`.
+
+    Returns:
+        HTML ``<section class="charts">`` fragment, or ``""`` if the list
+        is empty or all files are missing.
+    """
+    if not chart_paths:
+        return ""
+
+    figures: list[str] = []
+    for path in chart_paths:
+        if not path.exists():
+            logger.warning("Plik wykresu nie istnieje, pomijam: %s", path)
+            continue
+        b64 = base64.b64encode(path.read_bytes()).decode("ascii")
+        figures.append(
+            f'<figure>'
+            f'<img src="data:image/png;base64,{b64}" alt="{path.stem}"/>'
+            f'<figcaption>{path.stem}</figcaption>'
+            f'</figure>'
+        )
+
+    if not figures:
+        return ""
+
+    return '<section class="charts">' + "\n".join(figures) + "</section>"
+
+
+def _render_html(
+    html_body: str,
+    symbol: str,
+    export_date: date,
+    charts_html: str = "",
+) -> str:
     """Wrap an HTML fragment in the full page template.
 
     Loads ``templates/report.html`` and ``templates/report.css`` from disk,
-    then substitutes ``{symbol}``, ``{report_date}``, ``{css}``, and
-    ``{body}`` placeholders.
+    then substitutes ``{symbol}``, ``{report_date}``, ``{css}``,
+    ``{charts}``, and ``{body}`` placeholders.
 
     Args:
         html_body: HTML fragment produced by :func:`_to_html_body`.
         symbol: Cryptocurrency symbol shown in the page header (e.g. ``"BTC"``).
         export_date: Report date shown in the page header and ``<title>``.
+        charts_html: Optional HTML fragment with embedded chart images,
+            produced by :func:`_charts_to_html`. Empty string if no charts.
 
     Returns:
         Complete, self-contained HTML document string.
@@ -149,6 +198,7 @@ def _render_html(html_body: str, symbol: str, export_date: date) -> str:
         .replace("{symbol}", symbol)
         .replace("{report_date}", export_date.isoformat())
         .replace("{css}", css)
+        .replace("{charts}", charts_html)
         .replace("{body}", html_body)
     )
 
@@ -165,6 +215,7 @@ def export_report(
     source_format: Literal["markdown", "json"] = "markdown",
     export_format: Literal["html", "pdf"] = "html",
     output_dir: Path = Path("reports"),
+    chart_paths: list[Path] | None = None,
 ) -> Path:
     """Render a report string to an HTML or PDF file.
 
@@ -181,6 +232,9 @@ def export_report(
         export_format: Desired output format — ``"html"`` or ``"pdf"``.
         output_dir: Directory where files are written. Created if absent.
             Defaults to ``reports/`` relative to the current working directory.
+        chart_paths: Optional list of PNG chart files to embed in the HTML
+            output as base64 data URIs. Displayed above the report body.
+            ``None`` or empty list → no charts embedded.
 
     Returns:
         :class:`pathlib.Path` to the generated file.
@@ -215,7 +269,8 @@ def export_report(
     html_body = _to_html_body(content, source_format)
 
     # Step 2 — embed fragment into the full page template with CSS
-    html_doc = _render_html(html_body, symbol, export_date)
+    charts_html = _charts_to_html(chart_paths or [])
+    html_doc = _render_html(html_body, symbol, export_date, charts_html)
 
     # Step 3 — always save the HTML file (self-contained, opens in any browser)
     html_path = output_dir / f"{stem}.html"

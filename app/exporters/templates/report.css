@@ -439,3 +439,40 @@ footer {
     tr:hover td { background: inherit; }
     a { color: #1e293b; border-bottom: none; }
 }
+
+/* ── Sekcja wykresów cenowych ────────────────────────────────────────────── */
+
+/* Kontener sekcji — odstęp pod spodem przed treścią raportu */
+.charts {
+    display: flex;
+    flex-direction: column;
+    gap: 24px;
+    margin-bottom: 36px;
+}
+
+/* Każdy wykres w osobnej karcie — spójne z kartą główną main */
+.charts figure {
+    margin: 0;
+    padding: 0;
+    background: #f8fafc;
+    border: 1px solid #e2e8f0;
+    border-radius: 10px;
+    overflow: hidden;
+}
+
+/* Wykres wypełnia całą szerokość karty, skaluje się responsywnie */
+.charts img {
+    display: block;
+    width: 100%;
+    height: auto;
+}
+
+/* Podpis pod wykresem — małe, wyciszone, wyrównane do środka */
+.charts figcaption {
+    padding: 6px 12px 8px;
+    font-size: 0.78rem;
+    color: #64748b;       /* --muted */
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    letter-spacing: 0.02em;
+}

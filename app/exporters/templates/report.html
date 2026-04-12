@@ -8,6 +8,8 @@
       {symbol}      → symbol kryptowaluty, np. "BTC"
       {report_date} → data raportu w formacie ISO, np. "2026-04-06"
       {css}         → pełna zawartość pliku report.css (wklejona dosłownie)
+      {charts}      → sekcja <section class="charts"> z wykresami PNG (base64),
+                      lub pusty string gdy brak wykresów
       {body}        → fragment HTML z treścią raportu
 
     Dlaczego CSS jest osadzony w <style>, a nie linkowany zewnętrznym plikiem?
@@ -50,6 +52,7 @@
     </header>
 
     <main>
+        {charts}
         {body}
 
         <footer>
