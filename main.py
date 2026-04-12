@@ -4,6 +4,10 @@ import os
 from datetime import date
 from pathlib import Path
 
+import pandas as pd
+
+from app.charts.chart_generator import generate_price_charts
+from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.claude_runner import run
 from app.exporters.report_exporter import export_report
 from app.utils.errors import safe_run, ConfigurationError
@@ -47,14 +51,22 @@ def _save_report(symbol: str, report: str, output_format: str = "markdown") -> P
 # ---------------------------------------------------------------------------
 
 
-def _run_export(symbol: str, report: str, source_format: str, export_fmt: str) -> None:
+def _run_export(
+    symbol: str,
+    report: str,
+    source_format: str,
+    export_fmt: str,
+    export_date: date,
+    chart_paths: list[Path] | None = None,
+) -> None:
     """Convert a report string to HTML or PDF and print the result path."""
     path = export_report(
         content=report,
         symbol=symbol,
-        export_date=date.today(),
+        export_date=export_date,
         source_format=source_format,
         export_format=export_fmt,
+        chart_paths=chart_paths,
     )
     print(f"  Exported → {path}")
 
@@ -80,19 +92,23 @@ def _ask_export_format() -> str | None:
 # ---------------------------------------------------------------------------
 
 
-def _post_analysis_menu(symbol: str, report: str, source_format: str) -> None:
+def _post_analysis_menu(
+    symbol: str,
+    report: str,
+    source_format: str,
+    report_date: date,
+    chart_paths: list[Path] | None = None,
+) -> None:
     """Interactive loop shown after a report is ready (new or loaded).
 
     Options:
         e — export (asks html/pdf)
-        n — analyze another symbol directly (prompts for symbol, stays in loop)
         m — back to main menu
         q — quit the program entirely
     """
     while True:
         print()
         print("  [e] Export report (HTML / PDF)")
-        print("  [n] Analyze another symbol")
         print("  [m] Main menu")
         print("  [q] Quit")
 
@@ -105,26 +121,38 @@ def _post_analysis_menu(symbol: str, report: str, source_format: str) -> None:
             case "e" | "export":
                 fmt = _ask_export_format()
                 if fmt:
-                    _run_export(symbol, report, source_format, fmt)
-            case "n" | "next":
-                inputs = _gather_analysis_inputs()
-                if inputs is None:
-                    continue
-                symbol_new, language_new, output_format_new = inputs
-                result = safe_run(
-                    analyze_symbol, symbol_new, language_new, output_format_new,
-                    debug=DEBUG_MODE,
-                )
-                if result is not None:
-                    symbol = symbol_new
-                    report = result
-                    source_format = output_format_new
+                    _run_export(symbol, report, source_format, fmt, report_date, chart_paths)
             case "m" | "menu":
                 return
             case "q" | "quit" | "exit":
                 raise SystemExit(0)
             case _:
-                print("  Unknown option — type e, n, m, or q.")
+                print("  Unknown option — type e, m, or q.")
+
+
+# ---------------------------------------------------------------------------
+# Chart generation helpers
+# ---------------------------------------------------------------------------
+
+
+def _generate_charts_for_report(symbol: str, report_date: date) -> list[Path]:
+    """Generuj wykresy dla istniejącego raportu z danego dnia.
+
+    Pobiera pełną historię cen (z cache), filtruje df do danych
+    niepóźniejszych niż ``report_date`` (żadne "przyszłe" dane nie wyciekają),
+    a następnie generuje wykresy PNG do katalogu ``reports/``.
+
+    Args:
+        symbol: Symbol kryptowaluty, np. ``"BTC"``.
+        report_date: Data raportu — górna granica filtrowania historii.
+
+    Returns:
+        Lista ścieżek do wygenerowanych plików PNG.
+    """
+    alpha_client = AlphaVantageClient(config.ALPHAVANTAGE_API_KEY)
+    df = alpha_client.get_daily_prices(symbol)
+    df_as_of = df[df.index <= pd.Timestamp(report_date)]
+    return generate_price_charts(df_as_of, symbol, Path("reports"), export_date=report_date)
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +184,12 @@ def _gather_analysis_inputs() -> tuple[str, str, str] | None:
     return symbol, language, output_format
 
 
-def analyze_symbol(symbol: str, language: str, output_format: str = "markdown") -> str:
-    """Run the full analysis pipeline for one symbol.
+def analyze_symbol(
+    symbol: str,
+    language: str,
+    output_format: str = "markdown",
+) -> tuple[str, list[Path], date]:
+    """Run the full analysis pipeline for one symbol and generate price charts.
 
     Args:
         symbol: Cryptocurrency ticker, e.g. ``"BTC"``.
@@ -165,7 +197,9 @@ def analyze_symbol(symbol: str, language: str, output_format: str = "markdown") 
         output_format: ``"markdown"`` or ``"json"``.
 
     Returns:
-        Final report string.
+        Tuple of ``(report, chart_paths, analysis_date)`` — the final report
+        string, list of generated PNG chart paths, and the date captured at
+        the start of the analysis (used consistently for filenames and exports).
 
     Raises:
         ConfigurationError: If symbol is empty.
@@ -176,11 +210,20 @@ def analyze_symbol(symbol: str, language: str, output_format: str = "markdown") 
             hint="Enter a cryptocurrency symbol like BTC, ETH, or SOL.",
         )
 
+    # Data przechwycona raz — używana spójnie do zapisu raportu, wykresów i eksportu
+    analysis_date = date.today()
+
     result = asyncio.run(run(symbol, language=language, output_format=output_format))
     print("\n\n========== FINAL RESULT ==========\n")
     print(result)
     _save_report(symbol, result, output_format)
-    return result
+
+    # Generuj wykresy — dane pobrane z cache (szybkie, bez dodatkowego wywołania API)
+    alpha_client = AlphaVantageClient(config.ALPHAVANTAGE_API_KEY)
+    df = alpha_client.get_daily_prices(symbol)
+    chart_paths = generate_price_charts(df, symbol, Path("reports"), export_date=analysis_date)
+
+    return result, chart_paths, analysis_date
 
 
 # ---------------------------------------------------------------------------
@@ -200,11 +243,35 @@ def _list_saved_reports() -> list[Path]:
     return sorted(files, reverse=True)
 
 
-def _pick_saved_report() -> tuple[str, str, str] | None:
+def _parse_report_filename(stem: str) -> tuple[str, date] | None:
+    """Parse a report filename stem into (symbol, report_date).
+
+    Expected format: ``YYYY-MM-DD_SYMBOL`` (e.g. ``2026-04-12_BTC``).
+    Returns ``None`` if the stem doesn't match this pattern.
+
+    Args:
+        stem: Filename without extension, e.g. ``"2026-04-12_BTC"``.
+
+    Returns:
+        ``(symbol, report_date)`` or ``None`` if parsing fails.
+    """
+    parts = stem.split("_", 1)
+    if len(parts) != 2:
+        return None
+    date_str, symbol = parts
+    try:
+        return symbol, date.fromisoformat(date_str)
+    except ValueError:
+        return None
+
+
+def _pick_saved_report() -> tuple[str, str, str, date | None] | None:
     """Let the user pick a saved report from the reports/ directory.
 
     Returns:
-        ``(symbol, content, source_format)`` or ``None`` if cancelled.
+        ``(symbol, content, source_format, report_date)`` or ``None`` if cancelled.
+        ``report_date`` is ``None`` when the filename doesn't match the expected
+        ``YYYY-MM-DD_SYMBOL.ext`` pattern — the caller should skip chart generation.
     """
     files = _list_saved_reports()
     if not files:
@@ -231,9 +298,19 @@ def _pick_saved_report() -> tuple[str, str, str] | None:
     path = files[int(raw) - 1]
     content = path.read_text(encoding="utf-8")
     source_format = "json" if path.suffix == ".json" else "markdown"
-    # Extract symbol from filename: YYYY-MM-DD_SYMBOL.ext
-    symbol = path.stem.split("_", 1)[-1] if "_" in path.stem else path.stem
-    return symbol, content, source_format
+
+    parsed = _parse_report_filename(path.stem)
+    if parsed is None:
+        logger.warning(
+            "Nieoczekiwany format nazwy pliku '%s' — oczekiwano YYYY-MM-DD_SYMBOL. "
+            "Wykresy nie zostaną wygenerowane.",
+            path.name,
+        )
+        # Użyj całego stem jako symbolu (best-effort dla nagłówka HTML)
+        return path.stem, content, source_format, None
+
+    symbol, report_date = parsed
+    return symbol, content, source_format, report_date
 
 
 # ---------------------------------------------------------------------------
@@ -265,19 +342,23 @@ def main() -> None:
                 if inputs is None:
                     continue
                 symbol, language, output_format = inputs
-                result = safe_run(analyze_symbol, symbol, language, output_format, debug=DEBUG_MODE)
-                if result is not None:
-                    _post_analysis_menu(symbol, result, output_format)
+                report, chart_paths, analysis_date = safe_run(analyze_symbol, symbol, language, output_format, debug=DEBUG_MODE)
+                _post_analysis_menu(symbol, report, output_format, analysis_date, chart_paths)
 
             case "e" | "export":
                 picked = _pick_saved_report()
                 if picked is None:
                     continue
-                symbol, content, source_format = picked
+                symbol, content, source_format, report_date = picked
+                if report_date is None:
+                    print("  Nie można wyeksportować — nie udało się odczytać daty z nazwy pliku.")
+                    print("  Oczekiwany format: YYYY-MM-DD_SYMBOL.md / .json")
+                    continue
                 print(f"\n  Report: {symbol}  ({source_format})")
+                chart_paths = _generate_charts_for_report(symbol, report_date)
                 fmt = _ask_export_format()
                 if fmt:
-                    _run_export(symbol, content, source_format, fmt)
+                    _run_export(symbol, content, source_format, fmt, report_date, chart_paths)
 
             case "q" | "quit" | "exit":
                 break
