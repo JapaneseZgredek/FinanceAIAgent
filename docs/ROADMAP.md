@@ -135,8 +135,15 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - Always writes `.html` first; converts to `.pdf` if requested.
     - *`app/exporters/report_exporter.py` — `export_report()`, `app/exporters/templates/`*
 
-19. ⬚ **Price charts**
-    - Generate: 90-day price chart, volatility chart, MA overlay (matplotlib / plotly).
+19. ✅ **Price charts**
+    - Static PNG charts generated from the full Alpha Vantage history (4000+ days for BTC).
+    - Chart 1: price + SMA20 / SMA50 / SMA200 overlay; window = `PRICE_WINDOW_DAYS` by default.
+    - Chart 2: 30-day rolling volatility (daily return std × 100).
+    - SMA computed on full df (correct warmup) then sliced to display window via `.loc[]`.
+    - Base64-embedded in HTML/PDF export via `_charts_to_html()` in `report_exporter.py`.
+    - PNG files also saved to `reports/YYYY-MM-DD_<SYMBOL>_price.png` and `..._volatility.png`.
+    - Optional dep: `matplotlib>=3.8.0` — graceful fallback (`[]`) if not installed.
+    - *`app/charts/chart_generator.py` — `generate_price_charts()`, `app/exporters/report_exporter.py` — `_charts_to_html()`*
 
 20. ⬚ **Report diff / comparison**
     - Compare today's report vs yesterday's saved version.

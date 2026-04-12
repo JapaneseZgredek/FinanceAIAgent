@@ -53,6 +53,10 @@ Finance_AI_Agent/
     │   ├── alpha_vantage_client.py #    └── Price data API (with caching + retry)
     │   └── claude_client.py        #    └── Async Claude CLI subprocess wrapper
     │
+    ├── charts/                     # 📊 Price chart generation (PNG, optional matplotlib)
+    │   ├── __init__.py
+    │   └── chart_generator.py      #    └── generate_price_charts() — price+MA, vol, RSI, MACD
+    │
     ├── exporters/                  # 📤 Report export (HTML / PDF)
     │   ├── report_exporter.py      #    └── export_report() — standalone, FastAPI-ready
     │   └── templates/              #    └── HTML template + CSS (separate files)
@@ -93,6 +97,11 @@ User Input (BTC) → main.py → asyncio.run(claude_runner.run())
                                      │
                                      ▼
                     reports/YYYY-MM-DD_<SYMBOL>.md|json (auto-saved)
+                                     │
+                                     ▼
+                    generate_price_charts() — 4 PNG files
+                    (price+MA, volatility, RSI, MACD)
+                    base64-embedded on HTML/PDF export
 ```
 
 
@@ -162,6 +171,7 @@ unblocked during subprocess execution, enabling concurrency and FastAPI compatib
 - API keys:
   - Alpha Vantage
 - Claude Code CLI installed and authenticated (`claude` in PATH)
+- `matplotlib>=3.8.0` for price charts (optional — graceful fallback if missing)
 
 ---
 
