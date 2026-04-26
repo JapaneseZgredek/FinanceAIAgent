@@ -37,6 +37,7 @@ WeasyPrint system requirements (PDF only):
 import base64
 import json
 import logging
+import time
 from datetime import date
 from pathlib import Path
 from typing import Literal
@@ -264,6 +265,11 @@ def export_report(
     output_dir.mkdir(parents=True, exist_ok=True)
 
     stem = f"{export_date.isoformat()}_{symbol}"
+    t0 = time.perf_counter()
+    logger.info(
+        "Exporting %s report for %s as %s",
+        source_format, symbol, export_format,
+    )
 
     # Step 1 — convert source content to an HTML fragment
     html_body = _to_html_body(content, source_format)
@@ -278,6 +284,7 @@ def export_report(
     logger.info("HTML report saved → %s", html_path)
 
     if export_format == "html":
+        logger.info("Export completed in %.1fs", time.perf_counter() - t0)
         return html_path
 
     # Step 4 — PDF conversion via WeasyPrint.
@@ -297,7 +304,9 @@ def export_report(
         ) from exc
 
     pdf_path = output_dir / f"{stem}.pdf"
+    t_pdf = time.perf_counter()
     logger.info("Rendering PDF → %s (this may take a few seconds)", pdf_path)
     weasyprint.HTML(string=html_doc, base_url=str(output_dir)).write_pdf(str(pdf_path))
-    logger.info("PDF report saved → %s", pdf_path)
+    logger.info("PDF rendered in %.1fs → %s", time.perf_counter() - t_pdf, pdf_path)
+    logger.info("Export completed in %.1fs", time.perf_counter() - t0)
     return pdf_path

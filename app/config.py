@@ -38,14 +38,14 @@ def _get_int(key: str, default: int, min_val: int | None = None, max_val: int | 
     try:
         value = int(raw)
     except ValueError:
-        logger.warning(f"Invalid integer for {key}='{raw}', using default={default}")
+        logger.warning("Invalid integer for %s='%s', using default=%d", key, raw, default)
         return default
 
     if min_val is not None and value < min_val:
-        logger.warning(f"{key}={value} is below minimum {min_val}, using {min_val}")
+        logger.warning("%s=%d is below minimum %d, using %d", key, value, min_val, min_val)
         return min_val
     if max_val is not None and value > max_val:
-        logger.warning(f"{key}={value} is above maximum {max_val}, using {max_val}")
+        logger.warning("%s=%d is above maximum %d, using %d", key, value, max_val, max_val)
         return max_val
 
     return value
@@ -71,14 +71,14 @@ def _get_float(key: str, default: float, min_val: float | None = None, max_val: 
     try:
         value = float(raw)
     except ValueError:
-        logger.warning(f"Invalid number for {key}='{raw}', using default={default}")
+        logger.warning("Invalid number for %s='%s', using default=%g", key, raw, default)
         return default
 
     if min_val is not None and value < min_val:
-        logger.warning(f"{key}={value} is below minimum {min_val}, using {min_val}")
+        logger.warning("%s=%g is below minimum %g, using %g", key, value, min_val, min_val)
         return min_val
     if max_val is not None and value > max_val:
-        logger.warning(f"{key}={value} is above maximum {max_val}, using {max_val}")
+        logger.warning("%s=%g is above maximum %g, using %g", key, value, max_val, max_val)
         return max_val
 
     return value
@@ -175,7 +175,7 @@ NEWS_SOURCES_BLOCKED: list[str] = [
 
 def validate_env() -> None:
     """
-    Validate required configuration on startup.
+    Validate required configuration on startup and log full environment state.
 
     Raises:
         ConfigurationError: If ALPHAVANTAGE_API_KEY is missing.
@@ -189,16 +189,30 @@ def validate_env() -> None:
                  "Then add it to your .env file.",
         )
 
-    logger.debug("Configuration validated successfully")
+    # Log full configuration state at startup
+    logger.info("Environment validated. Active configuration:")
+    logger.info("  [API]     ALPHAVANTAGE_API_KEY: configured")
+    if FRED_API_KEY:
+        logger.info("  [API]     FRED_API_KEY: configured (macro context enabled)")
+    else:
+        logger.info("  [API]     FRED_API_KEY: not set (macro context disabled)")
+    logger.info("  [LLM]     CLAUDE_MODEL: %s", CLAUDE_MODEL)
+    logger.info("  [LLM]     DEFAULT_LANGUAGE: %s", DEFAULT_LANGUAGE)
+    logger.info("  [NEWS]    NEWS_DAYS_BACK: %d days", NEWS_DAYS_BACK)
+    logger.info("  [PRICE]   PRICE_WINDOW_DAYS: %d days | PRICE_LAST_N: %d", PRICE_WINDOW_DAYS, PRICE_LAST_N)
+    logger.info("  [CACHE]   CACHE_TTL_HOURS: %.1fh | NEWS_CACHE_TTL: %.0fmin", CACHE_TTL_HOURS, CLAUDE_NEWS_CACHE_TTL_MINUTES)
 
 
 def print_config_summary() -> None:
-    """Print a summary of current configuration (for debugging)."""
-    print("\nConfiguration Summary:")
-    print(f"  CLAUDE_MODEL: {CLAUDE_MODEL}")
-    print(f"  NEWS_DAYS_BACK: {NEWS_DAYS_BACK}")
-    print(f"  PRICE_WINDOW_DAYS: {PRICE_WINDOW_DAYS}")
-    print(f"  PRICE_LAST_N: {PRICE_LAST_N}")
-    print(f"  CACHE_TTL_HOURS: {CACHE_TTL_HOURS}")
-    print(f"  CLAUDE_NEWS_CACHE_TTL_MINUTES: {CLAUDE_NEWS_CACHE_TTL_MINUTES}")
-    print()
+    """Log a summary of current configuration (for debugging)."""
+    logger.info("Configuration summary:")
+    logger.info("  CLAUDE_MODEL: %s", CLAUDE_MODEL)
+    logger.info("  NEWS_DAYS_BACK: %d", NEWS_DAYS_BACK)
+    logger.info("  PRICE_WINDOW_DAYS: %d", PRICE_WINDOW_DAYS)
+    logger.info("  PRICE_LAST_N: %d", PRICE_LAST_N)
+    logger.info("  CACHE_TTL_HOURS: %.1f", CACHE_TTL_HOURS)
+    logger.info("  CLAUDE_NEWS_CACHE_TTL_MINUTES: %.1f", CLAUDE_NEWS_CACHE_TTL_MINUTES)
+    if FRED_API_KEY:
+        logger.info("  FRED_API_KEY: configured")
+    else:
+        logger.info("  FRED_API_KEY: not set (macro context disabled)")

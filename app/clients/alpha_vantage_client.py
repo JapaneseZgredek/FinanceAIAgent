@@ -1,4 +1,5 @@
 import logging
+import time
 
 import requests
 import pandas as pd
@@ -36,8 +37,13 @@ class AlphaVantageClient:
             f"?function=DIGITAL_CURRENCY_DAILY&symbol={ticker}"
             f"&market=USD&apikey={self.api_key}"
         )
+        t0 = time.perf_counter()
         response = requests.get(url, timeout=30)
-        response.raise_for_status()  # Raise on HTTP errors
+        response.raise_for_status()
+        logger.info(
+            "Alpha Vantage API for %s: %.1fs (HTTP %d)",
+            ticker, time.perf_counter() - t0, response.status_code,
+        )
         return response.json()
 
     def _get_cache_identifier(self, ticker: str) -> str:
@@ -51,7 +57,7 @@ class AlphaVantageClient:
         cached_data, is_fresh = self.cache.get(cache_id)
 
         if cached_data and is_fresh:
-            logger.info(f"Using fresh cached data for {ticker}")
+            logger.info("Using fresh cached data for %s", ticker)
             data = cached_data
         else:
             # Try to fetch from API
@@ -62,7 +68,7 @@ class AlphaVantageClient:
                 if "Note" in data:
                     if cached_data:
                         logger.warning(
-                            f"Rate limited by AlphaVantage, falling back to cached data for {ticker}"
+                            "Rate limited by AlphaVantage, falling back to cached data for %s", ticker
                         )
                         data = cached_data
                     else:
@@ -72,7 +78,8 @@ class AlphaVantageClient:
                 elif "Error Message" in data:
                     if cached_data:
                         logger.warning(
-                            f"API error, falling back to cached data for {ticker}: {data['Error Message']}"
+                            "API error, falling back to cached data for %s: %s",
+                            ticker, data["Error Message"],
                         )
                         data = cached_data
                     else:
@@ -82,7 +89,7 @@ class AlphaVantageClient:
                 elif "Time Series (Digital Currency Daily)" not in data:
                     if cached_data:
                         logger.warning(
-                            f"Unexpected response, falling back to cached data for {ticker}"
+                            "Unexpected response, falling back to cached data for %s", ticker
                         )
                         data = cached_data
                     else:
@@ -91,13 +98,13 @@ class AlphaVantageClient:
                 # Success - cache the new data
                 else:
                     self.cache.set(cache_id, data)
-                    logger.info(f"Fetched and cached fresh data for {ticker}")
+                    logger.info("Fetched and cached fresh data for %s", ticker)
 
             except requests.RequestException as e:
                 # Network error - try to use stale cache
                 if cached_data:
                     logger.warning(
-                        f"Network error, falling back to cached data for {ticker}: {e}"
+                        "Network error, falling back to cached data for %s: %s", ticker, e
                     )
                     data = cached_data
                 else:
@@ -118,4 +125,8 @@ class AlphaVantageClient:
         df = pd.DataFrame.from_dict(close, orient="index", columns=["price"])
         df.index = pd.to_datetime(df.index)
         df = df.sort_index()  # ascending order
+        logger.debug(
+            "Price data for %s: %d rows (%s to %s)",
+            ticker, len(df), df.index[0].date(), df.index[-1].date(),
+        )
         return df

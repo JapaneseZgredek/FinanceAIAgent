@@ -15,6 +15,7 @@ import json
 import logging
 import os
 import re
+import time
 from datetime import datetime
 from typing import Literal
 
@@ -106,6 +107,7 @@ async def run(
     )
 
     # Step 0: price data + macro indicators — both are blocking I/O, run concurrently
+    t_step0 = time.perf_counter()
     (price_data, pre_decision), macro_context = await asyncio.gather(
         asyncio.to_thread(
             get_formatted_price_data,
@@ -113,22 +115,28 @@ async def run(
         ),
         asyncio.to_thread(_fetch_macro_context, macro_client),
     )
+    logger.info("Step 0 (data + macro fetch) completed in %.1fs", time.perf_counter() - t_step0)
     _decision_line = next(
         (l for l in pre_decision.splitlines() if "BASELINE DECISION:" in l), "N/A"
     )
     logger.info("Pre-computed decision for %s: %s", symbol, _decision_line)
 
     # Steps 1 and 2: run concurrently — neither depends on the other's output
+    t_steps12 = time.perf_counter()
     news_analysis, price_analysis = await asyncio.gather(
         _get_news_analysis(symbol, claude_client),
         _get_price_analysis(symbol, price_data, macro_context, claude_client),
     )
+    logger.info("Steps 1+2 (news + price analysis) completed in %.1fs", time.perf_counter() - t_steps12)
 
     # Step 3: final report — depends on both outputs above
-    return await _get_final_report(
+    t_step3 = time.perf_counter()
+    report = await _get_final_report(
         symbol, news_analysis, price_analysis, language, pre_decision, claude_client,
         output_format=output_format,
     )
+    logger.info("Step 3 (final report) completed in %.1fs", time.perf_counter() - t_step3)
+    return report
 
 
 # =============================================================================
@@ -190,6 +198,7 @@ async def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     # WebSearch and WebFetch only for this step — the only one that needs web access
     analysis = await claude_client.run(prompt, allowed_tools="WebSearch,WebFetch")
     await asyncio.to_thread(_news_cache.set, cache_key, {"analysis": analysis})
+    logger.debug("News cached for %s: %d chars", symbol, len(analysis))
     return analysis
 
 

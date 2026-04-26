@@ -145,57 +145,55 @@ def classify_error(exception: Exception) -> FinanceAgentError:
 def handle_error(exception: Exception, debug: bool = False) -> NoReturn:
     """
     Handle an exception with user-friendly output.
-    
+
     Args:
         exception: The exception to handle
         debug: If True, show full stack trace (for development)
     """
     # Classify the error
     friendly_error = classify_error(exception)
-    
-    # Print user-friendly message
-    print("\n" + "=" * 50)
-    print(friendly_error.display())
-    print("=" * 50 + "\n")
-    
-    # Log the full error for debugging (but don't show to user by default)
-    logger.debug(f"Full error details: {exception}", exc_info=True)
-    
-    # In debug mode, also show the original error
+
+    logger.error("Unhandled error: %s — %s", type(exception).__name__, friendly_error.message)
+    logger.debug("Full error details: %s", exception, exc_info=True)
+
+    logger.info("=" * 50)
+    logger.error(friendly_error.display())
+    logger.info("=" * 50)
+
+    # In debug mode, log the original exception details
     if debug:
-        print("\n[DEBUG] Original exception:")
-        print(f"  Type: {type(exception).__name__}")
-        print(f"  Message: {exception}")
-    
+        logger.debug("[DEBUG] Original exception type: %s", type(exception).__name__)
+        logger.debug("[DEBUG] Original exception message: %s", exception)
+
     sys.exit(1)
 
 
 def safe_run(func, *args, debug: bool = False, **kwargs):
     """
     Run a function with error handling.
-    
+
     Catches exceptions and displays user-friendly error messages
     instead of raw stack traces.
-    
+
     Args:
         func: Function to run
         *args: Arguments to pass to function
         debug: If True, show full stack traces
         **kwargs: Keyword arguments to pass to function
-    
+
     Returns:
         Result of func(*args, **kwargs) if successful
     """
     try:
         return func(*args, **kwargs)
     except FinanceAgentError as e:
-        # Already a friendly error, just display it
-        print("\n" + "=" * 50)
-        print(e.display())
-        print("=" * 50 + "\n")
+        logger.error("%s: %s", type(e).__name__, e.message)
+        logger.info("=" * 50)
+        logger.error(e.display())
+        logger.info("=" * 50)
         sys.exit(1)
     except KeyboardInterrupt:
-        print("\n\n⚠️  Operation cancelled by user.")
+        logger.info("Operation cancelled by user (KeyboardInterrupt)")
         sys.exit(130)
     except SystemExit:
         raise  # Let SystemExit pass through

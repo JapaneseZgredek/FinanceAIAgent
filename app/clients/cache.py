@@ -68,6 +68,7 @@ class CacheManager:
         cache_path = self._get_cache_path(cache_key)
 
         if not cache_path.exists():
+            logger.debug("Cache miss (no file): %s", identifier)
             return None, False
 
         try:
@@ -78,15 +79,21 @@ class CacheManager:
             age_seconds = time.time() - cached_time
             is_fresh = age_seconds < self.ttl_seconds
 
-            logger.debug(
-                f"Cache {'hit' if is_fresh else 'stale'} for {identifier} "
-                f"(age: {age_seconds:.0f}s, TTL: {self.ttl_seconds:.0f}s)"
-            )
+            if is_fresh:
+                logger.debug(
+                    "Cache hit for %s (age: %.0fs, TTL: %.0fs)",
+                    identifier, age_seconds, self.ttl_seconds,
+                )
+            else:
+                logger.info(
+                    "Cache stale for %s (age: %.0fs, TTL: %.0fs)",
+                    identifier, age_seconds, self.ttl_seconds,
+                )
 
             return cached.get("data"), is_fresh
 
         except (json.JSONDecodeError, KeyError) as e:
-            logger.warning(f"Failed to read cache for {identifier}: {e}")
+            logger.warning("Failed to read cache for %s: %s", identifier, e)
             return None, False
 
     def set(self, identifier: str, data: Any) -> None:
@@ -109,9 +116,9 @@ class CacheManager:
         try:
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(cache_entry, f)
-            logger.debug(f"Cached response for {identifier}")
+            logger.debug("Cached response for %s", identifier)
         except IOError as e:
-            logger.warning(f"Failed to write cache for {identifier}: {e}")
+            logger.warning("Failed to write cache for %s: %s", identifier, e)
 
     def invalidate(self, identifier: str) -> bool:
         """
@@ -128,7 +135,7 @@ class CacheManager:
 
         if cache_path.exists():
             cache_path.unlink()
-            logger.debug(f"Invalidated cache for {identifier}")
+            logger.debug("Invalidated cache for %s", identifier)
             return True
         return False
 
@@ -143,5 +150,5 @@ class CacheManager:
         for cache_file in self.cache_dir.glob("*.json"):
             cache_file.unlink()
             count += 1
-        logger.info(f"Cleared {count} cache entries")
+        logger.info("Cleared %d cache entries", count)
         return count

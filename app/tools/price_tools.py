@@ -141,6 +141,7 @@ def get_formatted_price_data(
           - pre_decision: Deterministic entry decision string from compute_pre_decision()
             (passed to Step 3 — final report prompt as a hard constraint).
     """
+    logger.info("Computing price data for %s (window=%dd, last_n=%d)", symbol, window_days, last_n)
     df = alpha_client.get_daily_prices(symbol)
 
     # Cap recent closes at 30 — beyond that the list adds noise without value
@@ -165,6 +166,11 @@ def get_formatted_price_data(
 
     # Calculate technical indicators (SMA, EMA, RSI, MACD, ATR)
     indicators = calculate_all_indicators(df)
+    logger.debug(
+        "Indicators for %s: RSI=%.1f, MACD trend=%s, vs SMA200=%s, volatility=%s",
+        symbol, indicators.rsi_14, indicators.macd_result.trend,
+        indicators.price_vs_sma_200, indicators.volatility_regime,
+    )
 
     # Recent closes
     last_slice = df.tail(safe_last_n)
@@ -189,4 +195,5 @@ def get_formatted_price_data(
 
     formatted_data = "\n".join(output_parts)
     pre_decision = compute_pre_decision(indicators)
+    logger.debug("Price data formatted for %s: %d chars", symbol, len(formatted_data))
     return formatted_data, pre_decision

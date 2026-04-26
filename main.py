@@ -1,6 +1,7 @@
 import asyncio
 import logging
 import os
+import time
 from datetime import date
 from pathlib import Path
 
@@ -13,15 +14,15 @@ from app.exporters.report_exporter import export_report
 from app.utils.errors import safe_run, ConfigurationError
 from app import config
 
+DEBUG_MODE = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG if DEBUG_MODE else logging.INFO,
     format="%(asctime)s | %(levelname)s | %(name)s | %(message)s",
     datefmt="%H:%M:%S",
 )
 logging.getLogger("httpx").setLevel(logging.WARNING)
 logging.getLogger("httpcore").setLevel(logging.WARNING)
-
-DEBUG_MODE = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
 
 logger = logging.getLogger(__name__)
 
@@ -68,7 +69,7 @@ def _run_export(
         export_format=export_fmt,
         chart_paths=chart_paths,
     )
-    print(f"  Exported → {path}")
+    logger.info("Exported → %s", path)
 
 
 def _ask_export_format() -> str | None:
@@ -107,10 +108,10 @@ def _post_analysis_menu(
         q — quit the program entirely
     """
     while True:
-        print()
-        print("  [e] Export report (HTML / PDF)")
-        print("  [m] Main menu")
-        print("  [q] Quit")
+        logger.info("")
+        logger.info("  [e] Export report (HTML / PDF)")
+        logger.info("  [m] Main menu")
+        logger.info("  [q] Quit")
 
         try:
             action = input("  > ").strip().lower()
@@ -127,7 +128,7 @@ def _post_analysis_menu(
             case "q" | "quit" | "exit":
                 raise SystemExit(0)
             case _:
-                print("  Unknown option — type e, m, or q.")
+                logger.info("  Unknown option — type e, m, or q.")
 
 
 # ---------------------------------------------------------------------------
@@ -178,7 +179,7 @@ def _gather_analysis_inputs() -> tuple[str, str, str] | None:
         return None
 
     if not symbol:
-        print("  No symbol entered — returning to menu.")
+        logger.info("  No symbol entered — returning to menu.")
         return None
 
     return symbol, language, output_format
@@ -213,9 +214,13 @@ def analyze_symbol(
     # Data przechwycona raz — używana spójnie do zapisu raportu, wykresów i eksportu
     analysis_date = date.today()
 
+    t0 = time.perf_counter()
     result = asyncio.run(run(symbol, language=language, output_format=output_format))
-    print("\n\n========== FINAL RESULT ==========\n")
-    print(result)
+    logger.info("Full pipeline for %s completed in %.1fs", symbol, time.perf_counter() - t0)
+
+    logger.info("========== FINAL RESULT ==========")
+    logger.info("%s", result)
+
     _save_report(symbol, result, output_format)
 
     # Generuj wykresy — dane pobrane z cache (szybkie, bez dodatkowego wywołania API)
@@ -275,13 +280,13 @@ def _pick_saved_report() -> tuple[str, str, str, date | None] | None:
     """
     files = _list_saved_reports()
     if not files:
-        print("  No saved reports found in reports/.")
+        logger.info("  No saved reports found in reports/.")
         return None
 
-    print()
+    logger.info("")
     for i, path in enumerate(files, start=1):
-        print(f"  [{i}] {path.name}")
-    print()
+        logger.info("  [%d] %s", i, path.name)
+    logger.info("")
 
     try:
         raw = input("  Pick a number (or Enter to cancel): ").strip()
@@ -292,7 +297,7 @@ def _pick_saved_report() -> tuple[str, str, str, date | None] | None:
         return None
 
     if not raw.isdigit() or not (1 <= int(raw) <= len(files)):
-        print("  Invalid selection.")
+        logger.info("  Invalid selection.")
         return None
 
     path = files[int(raw) - 1]
@@ -321,15 +326,20 @@ def _pick_saved_report() -> tuple[str, str, str, date | None] | None:
 def main() -> None:
     safe_run(config.validate_env, debug=DEBUG_MODE)
 
-    print("=" * 50)
-    print("  Finance AI Agent — Crypto Analyzer")
-    print("=" * 50)
+    logger.info("=" * 50)
+    logger.info("  Finance AI Agent — Crypto Analyzer")
+    logger.info("=" * 50)
+    logger.info(
+        "Config: model=%s | cache_ttl=%.1fh | price_window=%dd | news_days=%d | debug=%s",
+        config.CLAUDE_MODEL, config.CACHE_TTL_HOURS,
+        config.PRICE_WINDOW_DAYS, config.NEWS_DAYS_BACK, DEBUG_MODE,
+    )
 
     while True:
-        print()
-        print("  [a] Analyze a new symbol")
-        print("  [e] Export an existing saved report")
-        print("  [q] Quit")
+        logger.info("")
+        logger.info("  [a] Analyze a new symbol")
+        logger.info("  [e] Export an existing saved report")
+        logger.info("  [q] Quit")
 
         try:
             action = input("  > ").strip().lower()
@@ -351,10 +361,10 @@ def main() -> None:
                     continue
                 symbol, content, source_format, report_date = picked
                 if report_date is None:
-                    print("  Nie można wyeksportować — nie udało się odczytać daty z nazwy pliku.")
-                    print("  Oczekiwany format: YYYY-MM-DD_SYMBOL.md / .json")
+                    logger.warning("Nie można wyeksportować — nie udało się odczytać daty z nazwy pliku.")
+                    logger.warning("Oczekiwany format: YYYY-MM-DD_SYMBOL.md / .json")
                     continue
-                print(f"\n  Report: {symbol}  ({source_format})")
+                logger.info("Report: %s  (%s)", symbol, source_format)
                 chart_paths = _generate_charts_for_report(symbol, report_date)
                 fmt = _ask_export_format()
                 if fmt:
@@ -364,7 +374,7 @@ def main() -> None:
                 break
 
             case _:
-                print("  Unknown option — type a, e, or q.")
+                logger.info("  Unknown option — type a, e, or q.")
 
 
 if __name__ == "__main__":

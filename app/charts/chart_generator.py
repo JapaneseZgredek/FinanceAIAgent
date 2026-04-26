@@ -33,6 +33,7 @@ Wymagania:
 """
 
 import logging
+import time
 from datetime import date
 from pathlib import Path
 
@@ -366,15 +367,23 @@ def generate_price_charts(
         (f"{stem}_macd.png",       _plot_macd,          "wykresu MACD"),
     ]
 
+    t0 = time.perf_counter()
+    logger.info("Generating charts for %s (%d-day window, %d charts)", symbol, window_days, len(plots))
+
     for filename, plot_fn, label in plots:
         try:
+            t_chart = time.perf_counter()
             fig = plot_fn(df, df_display, symbol)
             path = output_dir / filename
             fig.savefig(str(path), dpi=150, bbox_inches="tight", facecolor=fig.get_facecolor())
             plt.close(fig)
             saved.append(path)
-            logger.info("%s zapisany → %s", label.capitalize(), path)
+            logger.info("%s saved in %.1fs → %s", label.capitalize(), time.perf_counter() - t_chart, path)
         except Exception:
             logger.exception("Błąd podczas generowania %s dla %s", label, symbol)
 
+    logger.info(
+        "Chart generation for %s: %d/%d charts in %.1fs",
+        symbol, len(saved), len(plots), time.perf_counter() - t0,
+    )
     return saved

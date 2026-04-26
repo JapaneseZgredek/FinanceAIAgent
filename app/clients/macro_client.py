@@ -123,7 +123,7 @@ class MacroClient:
             if o.get("value") not in (".", "", None)
         ]
         self._cache.set(cache_id, observations)
-        logger.debug("Fetched %d observations for %s", len(observations), series_id)
+        logger.info("Fetched %d observations for %s from FRED", len(observations), series_id)
         return observations
 
     @staticmethod
@@ -236,6 +236,19 @@ class MacroClient:
                 if exc:
                     logger.warning("%s fetch failed: %s", name, exc)
 
+        indicators = {
+            "SP500": snap.sp500,
+            "VIX": snap.vix,
+            "10Y yield": snap.yield_10y,
+            "USD Index": snap.dxy,
+            "CPI YoY": snap.cpi_yoy_pct,
+            "Fed Funds Rate": snap.fed_funds_rate,
+        }
+        populated = sum(1 for v in indicators.values() if v is not None)
+        logger.info("Macro snapshot: %d/6 indicators populated", populated)
+        if populated < 6:
+            missing = [name for name, v in indicators.items() if v is None]
+            logger.warning("Missing macro indicators: %s", ", ".join(missing))
         return snap
 
     def format_for_llm(self, snap: MacroSnapshot) -> str:
