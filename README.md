@@ -36,7 +36,8 @@ Finance_AI_Agent/
 │   └── ROADMAP.md                  #    └── Prioritized feature roadmap
 │
 ├── reports/                        # 📄 Saved reports (auto-created, gitignored)
-│   └── YYYY-MM-DD_<SYMBOL>.md|json #    └── One file per symbol per day (.md or .json)
+│   ├── YYYY-MM-DD_<SYMBOL>.md|json #    └── One file per symbol per day (.md or .json)
+│   └── comparison_<base>_<compare>_<SYMBOL>.md|json  # Comparison output
 │
 ├── .cache/                         # 📦 Local cache (auto-created, gitignored)
 │   ├── alpha_vantage/              #    └── Cached price data (TTL: 1-6h)
@@ -56,6 +57,10 @@ Finance_AI_Agent/
     ├── charts/                     # 📊 Price chart generation (PNG, optional matplotlib)
     │   ├── __init__.py
     │   └── chart_generator.py      #    └── generate_price_charts() — price+MA, vol, RSI, MACD
+    │
+    ├── comparators/                # 🔍 Report comparison (field-level diff + LLM narrative)
+    │   ├── __init__.py
+    │   └── report_comparator.py    #    └── compare_reports() — structured JSON diff or markdown section diff
     │
     ├── exporters/                  # 📤 Report export (HTML / PDF)
     │   ├── report_exporter.py      #    └── export_report() — standalone, FastAPI-ready
@@ -215,6 +220,7 @@ python3 main.py
 An interactive menu is shown:
 ```text
   [a] Analyze a new symbol
+  [c] Compare two saved reports
   [e] Export an existing saved report
   [q] Quit
 ```

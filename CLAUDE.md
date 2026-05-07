@@ -41,6 +41,10 @@ Finance_AI_Agent/
 │   │   ├── __init__.py
 │   │   └── chart_generator.py     # generate_price_charts() — price+MA, volatility, RSI, MACD
 │   │
+│   ├── comparators/               # Report comparison (deterministic diff + LLM narrative)
+│   │   ├── __init__.py
+│   │   └── report_comparator.py   # compare_reports() — Mode A: structured JSON diff; Mode B: markdown section diff
+│   │
 │   ├── exporters/                 # Report export (HTML / PDF)
 │   │   ├── report_exporter.py     # export_report() — standalone, FastAPI-ready
 │   │   └── templates/             # Separate template files (not hardcoded strings)
@@ -61,7 +65,8 @@ Finance_AI_Agent/
 │
 ├── reports/                       # Auto-created saved reports (git-ignored)
 │   ├── YYYY-MM-DD_<SYMBOL>.md|json      # One file per symbol per day (.md or .json)
-│   └── YYYY-MM-DD_<SYMBOL>_<kind>.png   # Chart PNGs: price, volatility, rsi, macd
+│   ├── YYYY-MM-DD_<SYMBOL>_<kind>.png   # Chart PNGs: price, volatility, rsi, macd
+│   └── comparison_<base>_<compare>_<SYMBOL>.md|json  # Comparison output
 │
 └── .cache/                        # Auto-created local cache (git-ignored)
     ├── alpha_vantage/             # Price data cache (TTL: 1-6h)
@@ -161,6 +166,7 @@ Config is validated at startup with type coercion and range checking. Invalid va
 - **JSON output mode**: `run()` accepts `output_format: Literal["markdown", "json"]` (default `"markdown"`). In JSON mode, `build_json_report_prompt()` requests a structured object instead of markdown — same override rules apply (PRE-COMPUTED ENTRY SIGNAL, FOMC, HIGH risk factors). `_validate_json_output()` strips accidental code fences, validates with `json.loads()`, and raises `FinanceAgentError` on parse failure. JSON is always English (machine consumption — `language` param ignored).
 - **HTML/PDF export**: `export_report()` in `app/exporters/report_exporter.py` is a standalone callable — no dependency on the pipeline or `main.py`. Templates (HTML structure + CSS) live in separate files under `app/exporters/templates/`. `_render_html()` uses chained `.replace()` instead of `.format()` to avoid `KeyError` from CSS curly braces. `weasyprint` is imported lazily inside the function (optional heavy dep with system library requirements); `markdown` is imported at module level (required dep).
 - **Price charts**: `generate_price_charts()` in `app/charts/chart_generator.py` produces four static PNG files per run — price + SMA20/50/200 overlay, 30d rolling volatility, RSI (14) with overbought/oversold zones, MACD (12,26,9) with histogram. `matplotlib` is imported at module level with a `try/except ImportError` guard — gracefully returns `[]` if missing. SMA/RSI/MACD computed on the full historical df (correct warmup), sliced to display window via `.loc[]`. Charts are base64-embedded in HTML/PDF via `_charts_to_html()` in `report_exporter.py`, and also saved as `YYYY-MM-DD_<SYMBOL>_<kind>.png` in `reports/`. The `export_date` parameter is always passed explicitly — no silent fallback to `date.today()` — so exported files never overwrite a different day's report.
+- **Report comparison**: `compare_reports()` in `app/comparators/report_comparator.py` diffs two saved reports for the same symbol. Mode A (both JSON): per-field `FieldDiff` tables for sentiment, decision, metrics, horizons, macro, risk_factors, events, trading, and sources — list items matched by semantic key function, not list position. Mode B (at least one markdown): section-level unified diff via `difflib`. Both modes append an optional LLM narrative drift step (`build_comparison_narrative_prompt()`) that explains *why* metrics shifted in 4–7 sentences. Auto-generates today's missing report on-the-fly (same format as base) before diffing. Comparison saved as `comparison_<base>_<compare>_<SYMBOL>.md|json`.
 - **Graceful degradation**: Network failure → cache fallback → warn and continue.
 
 ## Testing

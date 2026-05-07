@@ -145,9 +145,16 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - Optional dep: `matplotlib>=3.8.0` — graceful fallback (`[]`) if not installed.
     - *`app/charts/chart_generator.py` — `generate_price_charts()`, `app/exporters/report_exporter.py` — `_charts_to_html()`*
 
-20. ⬚ **Report diff / comparison**
-    - Compare today's report vs yesterday's saved version.
-    - Highlight sentiment shifts and changed indicators.
+20. ✅ **Report diff / comparison**
+    - Deterministic field-level diff for JSON reports (Mode A) and section-level unified diff for
+      markdown reports (Mode B), plus an optional LLM narrative drift step (4–7 sentences on *why*).
+    - Mode A diffs: sentiment, final_decision, pre_decision, override_applied, metrics (RSI/MACD/SMA),
+      horizons (short/medium/long), macro backdrop, risk_factors, events, trading, sources.
+    - List items matched by semantic key function (not list position) → correctly identifies added/removed/unchanged items.
+    - Auto-generates today's missing report before diffing; past dates raise a clear error.
+    - Output saved as `comparison_<base>_<compare>_<SYMBOL>.md|json` in `reports/`.
+    - Accessible from the main CLI menu via `[c] Compare two saved reports`.
+    - *`app/comparators/report_comparator.py` — `compare_reports()`, `app/prompts.py` — `build_comparison_narrative_prompt()`*
 
 ---
 
@@ -222,24 +229,30 @@ Prioritized list of improvements to grow this PoC into a production-ready system
 36. ⬚ **Multi-symbol batch mode**
     - Analyze BTC, ETH, SOL, XRP in one run. One combined daily digest.
 
-37. ⬚ **Multi-timeframe analysis**
-    - Combine 7d / 30d / 120d trends into one coherent view.
+37. ✅ **Multi-timeframe analysis**
+    - Resolved via configurable `PRICE_WINDOW_DAYS` + SMA20/50/200 overlay in every report.
+    - Short (SMA20), medium (SMA50), and long (SMA200) trends are already synthesised by Step 2.
 
 38. ⬚ **Report memory / short-term context**
     - Feed yesterday's report into today's prompt.
     - Detect narrative drift: "sentiment changed from Positive to Negative vs yesterday".
 
-39. ⬚ **Scoring-based final recommendation**
-    - Combine news sentiment + price momentum + volatility → single score.
-    - Output: "Bullish 72% confidence" style signal.
+39. ✅ **Scoring-based final recommendation**
+    - Implemented as `compute_pre_decision()` in `app/tools/price_tools.py`.
+    - Combines MACD trend, price vs SMA20/50/200, and ATR phase into a deterministic
+      `ENTER` / `WAIT` / `NO` signal before any LLM call.
+    - Injected into Step 3 as a hard constraint — eliminates non-deterministic trading
+      decisions across identical runs.
 
 40. ⬚ **Human override / interactive steering**
     - `--focus "ETF narrative"`, `--ignore "exchange hacks"`.
     - Steer analysis interactively via CLI flags.
 
-41. ⬚ **"Verifier" pass**
-    - Second Claude call that cross-checks if news claims are consistent across sources.
-    - Flags low-confidence or single-source narratives.
+41. ✅ **"Verifier" pass**
+    - Addressed via tiered source ranking (Tier 1/2/Blocked), mandatory corroboration rules
+      in the Step 1 prompt, and `(unconfirmed — single source)` tagging on single-source events.
+    - A full second LLM call would double cost for marginal gain — the prompt-level approach
+      already catches the same failure modes.
 
 42. ⬚ **Cost + token tracking**
     - Estimate prompt sizes, token usage, and rate-limit risk per run.
@@ -260,30 +273,6 @@ Prioritized list of improvements to grow this PoC into a production-ready system
 
 46. ⬚ **Event tagging**
     - Tag events: regulation / macro / exchange incident / institutional flow / on-chain.
-
-47. ⬚ **Dataset for ML experiments**
-    - Store daily news + price outcomes.
-    - Later: predict trend direction with a lightweight classifier.
-
----
-
-## Phase 9 — Future Ideas
-
-48. ⬚ **On-chain data integration**
-    - Whale wallet tracking, exchange inflow/outflow, miner activity.
-
-49. ⬚ **Social sentiment**
-    - X/Twitter crypto sentiment, Reddit mentions, Fear & Greed index.
-
-50. ⬚ **Portfolio tracking mode**
-    - Track multiple holdings, portfolio-level reports, risk exposure analysis.
-
-51. ⬚ **Backtesting framework**
-    - Test historical prediction accuracy.
-    - Compare news sentiment vs actual price moves.
-
-52. ⬚ **Real-time streaming mode**
-    - WebSocket price feeds, live news monitoring, alert on significant changes.
 
 ---
 
