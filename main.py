@@ -2,7 +2,8 @@ import asyncio
 import logging
 import os
 import time
-from datetime import date
+from dataclasses import dataclass
+from datetime import date, timedelta
 from pathlib import Path
 
 import pandas as pd
@@ -10,11 +11,33 @@ import pandas as pd
 from app.charts.chart_generator import generate_price_charts
 from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.claude_runner import run
+from app.comparators import compare_reports
 from app.exporters.report_exporter import export_report
-from app.utils.errors import safe_run, ConfigurationError
+from app.utils.errors import safe_run, ConfigurationError, FinanceAgentError
 from app import config
 
 DEBUG_MODE = os.getenv("DEBUG", "false").lower() in ("1", "true", "yes")
+
+
+# ---------------------------------------------------------------------------
+# Input bundles
+# ---------------------------------------------------------------------------
+
+
+@dataclass
+class AnalysisInputs:
+    symbol: str
+    language: str
+    output_format: str  # "markdown" | "json"
+
+
+@dataclass
+class ComparisonInputs:
+    symbol: str
+    base_date: date
+    compare_date: date
+    output_format: str  # "markdown" | "json"
+    language: str
 
 logging.basicConfig(
     level=logging.DEBUG if DEBUG_MODE else logging.INFO,
@@ -70,6 +93,22 @@ def _run_export(
         chart_paths=chart_paths,
     )
     logger.info("Exported → %s", path)
+
+
+def _ask_output_format() -> str | None:
+    """Ask the user to pick a report output format.
+
+    Returns:
+        ``"markdown"``, ``"json"``, or ``None`` if the input is invalid.
+    """
+    choice = input("  Format: [m]arkdown / [j]son [markdown]: ").strip().lower()
+    match choice:
+        case "" | "m" | "markdown":
+            return "markdown"
+        case "j" | "json":
+            return "json"
+        case _:
+            return None
 
 
 def _ask_export_format() -> str | None:
@@ -161,28 +200,100 @@ def _generate_charts_for_report(symbol: str, report_date: date) -> list[Path]:
 # ---------------------------------------------------------------------------
 
 
-def _gather_analysis_inputs() -> tuple[str, str, str] | None:
+def _gather_analysis_inputs() -> AnalysisInputs | None:
     """Prompt the user for symbol, language, and output format.
 
     Returns:
-        ``(symbol, language, output_format)`` or ``None`` if input was cancelled.
+        ``AnalysisInputs`` or ``None`` if input was cancelled.
     """
     try:
         symbol = input("Symbol (e.g. BTC): ").strip().upper()
+        if not symbol:
+            logger.info("  No symbol entered — returning to menu.")
+            return None
         language = (
             input(f"Language [{config.DEFAULT_LANGUAGE}]: ").strip()
             or config.DEFAULT_LANGUAGE
         )
-        fmt_raw = input("Format — markdown / json [markdown]: ").strip().lower()
-        output_format = fmt_raw if fmt_raw in ("markdown", "json") else "markdown"
     except EOFError:
         return None
 
-    if not symbol:
-        logger.info("  No symbol entered — returning to menu.")
+    output_format = _ask_output_format()
+    if output_format is None:
+        logger.info("  Invalid format — returning to menu.")
         return None
 
-    return symbol, language, output_format
+    return AnalysisInputs(symbol=symbol, language=language, output_format=output_format)
+
+
+def _gather_comparison_inputs() -> ComparisonInputs | None:
+    """Prompt the user for comparison parameters.
+
+    Returns:
+        ``ComparisonInputs`` or ``None`` if input was cancelled or invalid.
+    """
+    today = date.today()
+    yesterday = today - timedelta(days=1)
+
+    try:
+        symbol = input("Symbol (e.g. BTC): ").strip().upper()
+        if not symbol:
+            logger.info("  No symbol entered — returning to menu.")
+            return None
+
+        raw_base = input(f"Base date [{yesterday}]: ").strip() or str(yesterday)
+        raw_compare = input(f"Compare date [{today}]: ").strip() or str(today)
+        language = (
+            input(f"Language [{config.DEFAULT_LANGUAGE}]: ").strip()
+            or config.DEFAULT_LANGUAGE
+        )
+    except EOFError:
+        return None
+
+    try:
+        base_date = date.fromisoformat(raw_base)
+    except ValueError:
+        logger.info("  Invalid base date '%s' — expected YYYY-MM-DD.", raw_base)
+        return None
+
+    try:
+        compare_date = date.fromisoformat(raw_compare)
+    except ValueError:
+        logger.info("  Invalid compare date '%s' — expected YYYY-MM-DD.", raw_compare)
+        return None
+
+    output_format = _ask_output_format()
+    if output_format is None:
+        logger.info("  Invalid format — returning to menu.")
+        return None
+
+    return ComparisonInputs(
+        symbol=symbol,
+        base_date=base_date,
+        compare_date=compare_date,
+        output_format=output_format,
+        language=language,
+    )
+
+
+def _compare_reports_flow(inputs: ComparisonInputs) -> None:
+    """Run the comparison pipeline and log the result."""
+    logger.info(
+        "Comparing %s: %s → %s (%s)", inputs.symbol, inputs.base_date, inputs.compare_date, inputs.output_format,
+    )
+    t0 = time.perf_counter()
+    result = asyncio.run(
+        compare_reports(
+            inputs.symbol,
+            inputs.base_date,
+            inputs.compare_date,
+            output_format=inputs.output_format,
+            language=inputs.language,
+        )
+    )
+    logger.info("Comparison completed in %.1fs", time.perf_counter() - t0)
+    logger.info("========== COMPARISON ==========")
+    logger.info("%s", result)
 
 
 def analyze_symbol(
@@ -338,6 +449,7 @@ def main() -> None:
     while True:
         logger.info("")
         logger.info("  [a] Analyze a new symbol")
+        logger.info("  [c] Compare two saved reports")
         logger.info("  [e] Export an existing saved report")
         logger.info("  [q] Quit")
 
@@ -351,9 +463,19 @@ def main() -> None:
                 inputs = _gather_analysis_inputs()
                 if inputs is None:
                     continue
-                symbol, language, output_format = inputs
-                report, chart_paths, analysis_date = safe_run(analyze_symbol, symbol, language, output_format, debug=DEBUG_MODE)
-                _post_analysis_menu(symbol, report, output_format, analysis_date, chart_paths)
+                report, chart_paths, analysis_date = safe_run(
+                    analyze_symbol, inputs.symbol, inputs.language, inputs.output_format, debug=DEBUG_MODE,
+                )
+                _post_analysis_menu(inputs.symbol, report, inputs.output_format, analysis_date, chart_paths)
+
+            case "c" | "compare":
+                inputs = _gather_comparison_inputs()
+                if inputs is None:
+                    continue
+                try:
+                    _compare_reports_flow(inputs)
+                except FinanceAgentError as e:
+                    logger.error(e.display())
 
             case "e" | "export":
                 picked = _pick_saved_report()
@@ -374,7 +496,7 @@ def main() -> None:
                 break
 
             case _:
-                logger.info("  Unknown option — type a, e, or q.")
+                logger.info("  Unknown option — type a, c, e, or q.")
 
 
 if __name__ == "__main__":

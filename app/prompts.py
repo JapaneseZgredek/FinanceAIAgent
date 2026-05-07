@@ -676,3 +676,68 @@ Rules:
 - trading.leverage_min / leverage_max: fill for ENTER or WAIT, null for NO.
 
 Do NOT search the web. Use only the provided analyses. Output ONLY the JSON object."""
+
+
+def build_comparison_narrative_prompt(
+    symbol: str,
+    base_date,
+    compare_date,
+    structural_summary: str,
+    language: str,
+    *,
+    base_excerpt: str = "",
+    compare_excerpt: str = "",
+    diff_text: str = "",
+) -> str:
+    """Build a prompt for the narrative drift LLM step (Step 4 of the comparison pipeline).
+
+    Two mutually exclusive call patterns:
+      - Mode A (both JSON): pass ``base_excerpt`` + ``compare_excerpt`` — compact structured summaries.
+      - Mode B (markdown fallback): pass ``diff_text`` — the unified section diff output.
+
+    Args:
+        symbol: Cryptocurrency ticker, e.g. ``"BTC"``.
+        base_date: Date of the older report.
+        compare_date: Date of the newer report.
+        structural_summary: Deterministic summary of changed fields (built by ``_build_structural_summary``).
+        language: Output language for the narrative (e.g. "Polish", "English").
+        base_excerpt: Compact text from the base JSON report (events, risks, watch_next).
+        compare_excerpt: Compact text from the compare JSON report.
+        diff_text: Unified section diff (``-``/``+`` lines). Used when at least one report is markdown.
+
+    Returns:
+        Prompt string ready to pass to ``ClaudeClient.run()``.
+    """
+    if diff_text:
+        intro = (
+            f"You are a senior crypto analyst. Below is a unified section diff for {symbol} "
+            f"({base_date} → {compare_date}). Lines starting with '-' come from the older report "
+            f"({base_date}); lines starting with '+' come from the newer report ({compare_date})."
+        )
+        context_block = f"=== SECTION DIFF ===\n{diff_text}"
+    else:
+        intro = (
+            f"You are a senior crypto analyst. Two structured report excerpts for {symbol} are "
+            f"provided below — base from {base_date}, compare from {compare_date}."
+        )
+        context_block = (
+            f"=== BASE REPORT EXCERPT ({base_date}) ===\n{base_excerpt}\n\n"
+            f"=== COMPARE REPORT EXCERPT ({compare_date}) ===\n{compare_excerpt}"
+        )
+
+    return f"""\
+{intro}
+
+=== STRUCTURAL CHANGES (deterministic field diff) ===
+{structural_summary}
+
+{context_block}
+
+=== YOUR TASK ===
+Write a narrative drift summary of 4–7 sentences explaining WHY the key metrics and sentiment \
+shifted between the two dates. Focus on causality — which news events, macro developments, or \
+technical breakouts drove the change. Do NOT repeat the numbers from the structural changes above. \
+Bullet lists are allowed for distinct drivers; a short paragraph is preferred if the story is coherent.
+
+Output language: {language}.
+Do NOT search the web. Use only the information provided above."""
