@@ -24,7 +24,7 @@ from app.clients.cache import CacheManager
 from app.clients.claude_client import ClaudeClient
 from app.clients.macro_client import MacroClient
 from app import config
-from app.prompts import (
+from app.core.prompts import (
     build_news_prompt,
     build_price_analysis_prompt,
     build_final_report_prompt,

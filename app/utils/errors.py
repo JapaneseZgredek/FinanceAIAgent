@@ -142,6 +142,20 @@ def classify_error(exception: Exception) -> FinanceAgentError:
     )
 
 
+def format_error(exc: Exception) -> str:
+    """Format an exception as a user-friendly string without exiting.
+
+    Args:
+        exc: The exception to format.
+
+    Returns:
+        Formatted error string ready for display.
+    """
+    if isinstance(exc, FinanceAgentError):
+        return exc.display()
+    return classify_error(exc).display()
+
+
 def handle_error(exception: Exception, debug: bool = False) -> NoReturn:
     """
     Handle an exception with user-friendly output.

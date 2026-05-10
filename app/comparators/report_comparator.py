@@ -201,7 +201,7 @@ async def _load_report_data(
             "Auto-generating today's report for diff… (symbol=%s, format=%s)",
             symbol, auto_generate_format,
         )
-        from app.claude_runner import run
+        from app.core.claude_runner import run
         result = await run(
             symbol,
             language=language,
@@ -442,7 +442,7 @@ async def _run_narrative_drift_llm(
     *,
     diff_text: str | None = None,
 ) -> str | None:
-    from app.prompts import build_comparison_narrative_prompt
+    from app.core.prompts import build_comparison_narrative_prompt
 
     if claude_client is None:
         from app.clients.claude_client import ClaudeClient
