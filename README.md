@@ -212,29 +212,43 @@ DEBUG=false
 
 ## Run
 
-From the project root:
+**Always activate the venv first:**
+```bash
+source .venv/bin/activate
+```
+
+### Interactive mode (default)
 ```bash
 python3 main.py
 ```
 
-An interactive menu is shown:
+A Rich-enhanced menu is shown:
 ```text
-  [a] Analyze a new symbol
-  [c] Compare two saved reports
-  [e] Export an existing saved report
-  [q] Quit
+  a  Analyze a new symbol
+  c  Compare two saved reports
+  e  Export an existing saved report
+  q  Quit
 ```
 
-After analysis completes, a post-analysis menu appears:
-```text
-  [e] Export report (HTML / PDF)
-  [n] Analyze another symbol
-  [m] Main menu
-  [q] Quit
+### CLI mode (scriptable)
+```bash
+python3 main.py analyze --symbol BTC --format md --export pdf
+python3 main.py compare --symbol BTC --base 2026-05-09 --compare 2026-05-10
+python3 main.py export --report 2026-05-10_BTC --format html
+python3 main.py charts --symbol BTC --date 2026-05-10
 ```
+
+| Subcommand | Description |
+|---|---|
+| `analyze` | Full analysis pipeline (news + price + report) |
+| `compare` | Diff two saved reports for the same symbol |
+| `export` | Export a saved report to HTML or PDF |
+| `charts` | Generate price chart PNGs for a symbol/date |
+
+Use `python3 main.py <subcommand> --help` for all available flags.
 
 The final report is printed to stdout and auto-saved to `reports/`.  
-Use `[e]` to export any saved report to HTML or PDF without re-running the pipeline.
+In interactive mode, use `[e]` to export without re-running the pipeline.
 
 ---
 

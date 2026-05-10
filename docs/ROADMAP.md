@@ -160,9 +160,12 @@ Prioritized list of improvements to grow this PoC into a production-ready system
 
 ## Phase 4 — CLI & Developer Experience
 
-21. ⬚ **CLI arguments**
-    - `--symbol BTC`, `--days 7`, `--format md|json`, `--out reports/`
-    - Remove interactive prompt mode — make it scriptable.
+21. ✅ **CLI arguments + structural split**
+    - Typer-based CLI: `analyze`, `compare`, `export`, `charts` subcommands.
+    - Flags: `--symbol`, `--format`, `--out`, `--export`, `--news-days`, `--price-days`.
+    - Interactive mode preserved in `app/interfaces/interactive.py` (Rich-enhanced).
+    - Service layer extracted to `app/core/pipeline.py` (FastAPI-importable, no sys.exit).
+    - `main.py` → thin dispatcher (argv > 1 → CLI, else → interactive).
 
 22. ⬚ **Streaming Claude output**
     - Stream `claude --print` output progressively instead of waiting for the full response.

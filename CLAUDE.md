@@ -24,14 +24,23 @@ Finance AI Agent is a Python-based cryptocurrency market analysis system that ge
 
 ```
 Finance_AI_Agent/
-├── main.py                        # Entry point - interactive CLI
+├── main.py                        # Entry point — dispatcher (argv → CLI or interactive)
 ├── requirements.txt               # Core dependencies
 ├── requirements.lock.txt          # Pinned versions
 ├── .env.example                   # Configuration template
 │
 ├── app/                           # Main application package
 │   ├── config.py                  # Configuration loader + validation
-│   ├── claude_runner.py           # Pipeline orchestrator (3 Claude CLI subprocess calls)
+│   │
+│   ├── core/                      # Business logic (FastAPI-importable, no sys.exit)
+│   │   ├── claude_runner.py       # Pipeline orchestrator (3 Claude CLI subprocess calls)
+│   │   ├── prompts.py            # Prompt builders for each pipeline step
+│   │   ├── pipeline.py           # Service layer: analyze_symbol, save_report, run_export, generate_charts
+│   │   └── reports_index.py      # Filesystem helpers: list/parse saved reports
+│   │
+│   ├── interfaces/                # Entry points / transport layer
+│   │   ├── cli.py                # Typer CLI — subcommands: analyze, compare, export, charts
+│   │   └── interactive.py        # Rich-enhanced interactive menu
 │   │
 │   ├── clients/                   # External API integrations
 │   │   ├── cache.py               # Generic TTL-aware file-based cache
@@ -55,8 +64,9 @@ Finance_AI_Agent/
 │   │   └── price_tools.py         # Price stats, technical indicators, trend summary
 │   │
 │   └── utils/                     # Shared utilities
+│       ├── logging.py             # setup_logging() — idempotent, Rich fallback
 │       ├── retry.py               # Exponential backoff decorator with jitter
-│       ├── errors.py              # Custom exceptions + user-friendly error handler
+│       ├── errors.py              # Custom exceptions + format_error() + user-friendly handler
 │       └── indicators.py          # Technical indicators (SMA, EMA, RSI, MACD, ATR)
 │
 ├── docs/                          # Documentation
@@ -76,7 +86,7 @@ Finance_AI_Agent/
 ### Execution Flow
 
 ```
-python3 main.py → User enters symbol → asyncio.run(claude_runner.run(symbol))
+python3 main.py → dispatcher → interactive or CLI → pipeline.analyze_symbol() → asyncio.run(run(symbol))
   → Step 0: Alpha Vantage fetch + indicators (asyncio.to_thread, no LLM)
             compute_pre_decision() → deterministic ENTER/WAIT/NO from indicators
   → Steps 1+2: concurrent via asyncio.gather
@@ -112,12 +122,20 @@ Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocki
 
 ## Useful Commands
 
+**IMPORTANT:** Always activate the virtual environment before running any Python command:
+
 ```bash
+# Activate virtual environment (REQUIRED before any python3 command)
+source .venv/bin/activate
+
 # Run the agent (interactive - prompts for crypto symbol)
 python3 main.py
 
-# Activate virtual environment
-source .venv/bin/activate
+# Run in CLI mode (scriptable)
+python3 main.py analyze --symbol BTC --format md
+python3 main.py compare --symbol BTC
+python3 main.py export --report 2026-05-10_BTC --format pdf
+python3 main.py charts --symbol BTC --date 2026-05-10
 
 # Install dependencies
 pip install -r requirements.txt
