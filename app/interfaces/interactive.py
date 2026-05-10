@@ -262,7 +262,10 @@ def run_interactive() -> None:
                     )
 
                 report, chart_paths, analysis_date = result
-                console.print(f"\n[green]Analysis complete.[/green]")
+                console.print()
+                console.rule(f"[bold green]{inputs.symbol} — Analysis Result")
+                console.print(report)
+                console.rule()
                 _post_analysis_menu(
                     inputs.symbol, report, inputs.output_format, analysis_date, chart_paths
                 )
