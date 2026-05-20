@@ -33,7 +33,7 @@ Prioritized list of improvements to grow this PoC into a production-ready system
    - *Configured in `main.py`*
 
 7. ✅ **Pre-commit hooks (Claude Code)**
-   - Auto-format Python with `black`, detect `print()` anti-pattern, block dangerous bash commands.
+   - Auto-format Python with `ruff format`, detect `print()` anti-pattern, block dangerous bash commands.
    - *`.claude/hooks/`*
 
 8. ✅ **Replace CrewAI / Groq / Exa with Claude Code CLI pipeline**

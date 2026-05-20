@@ -19,12 +19,15 @@ Finance AI Agent is a Python-based cryptocurrency market analysis system that ge
 | Configuration | python-dotenv (>=1.0.0), `.env` file |
 | Export | markdown (>=3.5.0), weasyprint (>=62.0) |
 | Charts | matplotlib (>=3.8.0, optional) |
+| Linting / Formatting | ruff (line-length=120, py312, select E/F/W/I/UP) |
 
 ## Project Architecture
 
 ```
 Finance_AI_Agent/
 ├── main.py                        # Entry point — dispatcher (argv → CLI or interactive)
+├── Makefile                       # Task runner (make help for all targets)
+├── ruff.toml                      # Ruff linter/formatter config
 ├── requirements.txt               # Core dependencies
 ├── requirements.lock.txt          # Pinned versions
 ├── .env.example                   # Configuration template
@@ -142,6 +145,15 @@ pip install -r requirements.txt
 
 # Install exact pinned versions
 pip install -r requirements.lock.txt
+
+# Makefile shortcuts (venv must be active)
+make run                          # Interactive mode
+make report SYMBOL=BTC            # Full analysis
+make compare SYMBOL=ETH           # Compare saved reports
+make export REPORT=2026-05-10_BTC # Export to HTML
+make lint                         # ruff check + format check
+make format                       # Auto-format + auto-fix
+make help                         # All available targets
 ```
 
 ## Configuration

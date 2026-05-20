@@ -26,6 +26,8 @@ Project structure:
 Finance_AI_Agent/
 │
 ├── main.py                         # 🚀 Entry point - run this to start
+├── Makefile                        # Task runner (make help for targets)
+├── ruff.toml                       # Ruff linter/formatter config
 ├── requirements.txt                # Dependencies (pip install -r ...)
 ├── requirements.lock.txt           # Locked versions for reproducibility
 ├── .env.example                    # Template for environment variables
@@ -246,6 +248,17 @@ python3 main.py charts --symbol BTC --date 2026-05-10
 | `charts` | Generate price chart PNGs for a symbol/date |
 
 Use `python3 main.py <subcommand> --help` for all available flags.
+
+### Makefile shortcuts
+```bash
+make run                          # Interactive mode
+make report SYMBOL=BTC            # Analyze BTC
+make compare SYMBOL=ETH           # Compare saved ETH reports
+make export REPORT=2026-05-10_BTC # Export to HTML
+make lint                         # Ruff check + format check
+make format                       # Auto-format + auto-fix
+make help                         # All available targets
+```
 
 The final report is printed to stdout and auto-saved to `reports/`.  
 In interactive mode, use `[e]` to export without re-running the pipeline.
