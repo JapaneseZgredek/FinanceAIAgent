@@ -17,7 +17,7 @@ import logging
 import re
 import time
 from collections.abc import Callable, Hashable
-from dataclasses import asdict, dataclass, field
+from dataclasses import asdict, dataclass
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Literal
@@ -199,9 +199,11 @@ async def _load_report_data(
         # diff mode — avoids landing in markdown_fallback with a raw JSON string on one side.
         logger.info(
             "Auto-generating today's report for diff… (symbol=%s, format=%s)",
-            symbol, auto_generate_format,
+            symbol,
+            auto_generate_format,
         )
         from app.core.claude_runner import run
+
         result = await run(
             symbol,
             language=language,
@@ -213,7 +215,9 @@ async def _load_report_data(
         reports_dir.mkdir(exist_ok=True)
         if auto_generate_format == "json":
             json_path.write_text(result, encoding="utf-8")
-            return LoadedReport(date=target_date, format=auto_generate_format, data=json.loads(result), auto_generated=True)
+            return LoadedReport(
+                date=target_date, format=auto_generate_format, data=json.loads(result), auto_generated=True
+            )
         else:
             md_path.write_text(result, encoding="utf-8")
             return LoadedReport(date=target_date, format=auto_generate_format, data=result, auto_generated=True)
@@ -273,7 +277,7 @@ def _event_key(event: dict) -> tuple[str, str]:
     desc = event.get("description", "").lower().strip()
     for prefix in ("breaking: ", "update: ", "breaking:", "update:"):
         if desc.startswith(prefix):
-            desc = desc[len(prefix):].strip()
+            desc = desc[len(prefix) :].strip()
     source = event.get("source", "").lower().strip()
     return (desc, source)
 
@@ -302,7 +306,9 @@ def _diff_json_reports(base: dict, compare: dict) -> dict:
     compare_pred = compare.get("prediction") or {}
     final_decision = _diff_scalar("final_decision", base_pred.get("final_decision"), compare_pred.get("final_decision"))
     pre_decision = _diff_scalar("pre_decision", base_pred.get("pre_decision"), compare_pred.get("pre_decision"))
-    override_applied = _diff_scalar("override_applied", base_pred.get("override_applied"), compare_pred.get("override_applied"))
+    override_applied = _diff_scalar(
+        "override_applied", base_pred.get("override_applied"), compare_pred.get("override_applied")
+    )
 
     # dict diffs — fixed key lists, preserve display order
     metrics = _diff_dict_by_keys(base.get("metrics") or {}, compare.get("metrics") or {}, _METRIC_KEYS)
@@ -344,7 +350,7 @@ def _parse_markdown_sections(text: str) -> dict[str, str]:
             heading, body = part.strip(), ""
         else:
             heading = part[:newline_pos].strip()
-            body = part[newline_pos + 1:]
+            body = part[newline_pos + 1 :]
         sections[heading] = body
     return sections
 
@@ -373,13 +379,15 @@ def _diff_markdown_reports(base_text: str, compare_text: str) -> str:
         lines.append(f"**Removed sections:** {', '.join(sorted(removed_headings))}")
 
     for heading in sorted(common_keys):
-        diff = list(difflib.unified_diff(
-            base_sections[heading].splitlines(),
-            compare_sections[heading].splitlines(),
-            lineterm="",
-            n=1,
-        ))
-        changed_lines = [l for l in diff if l.startswith(("+", "-")) and not l.startswith(("+++", "---"))]
+        diff = list(
+            difflib.unified_diff(
+                base_sections[heading].splitlines(),
+                compare_sections[heading].splitlines(),
+                lineterm="",
+                n=1,
+            )
+        )
+        changed_lines = [line for line in diff if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
         if not changed_lines:
             continue
         lines.append(f"\n### {heading}")
@@ -403,7 +411,7 @@ def _extract_narrative_excerpt(loaded: LoadedReport) -> str:
         d = loaded.data
         parts: list[str] = []
 
-        sentiment = (d.get("sentiment") or {})
+        sentiment = d.get("sentiment") or {}
         if sentiment.get("summary"):
             parts.append(f"Sentiment: {sentiment['label']} — {sentiment['summary']}")
 
@@ -417,7 +425,9 @@ def _extract_narrative_excerpt(loaded: LoadedReport) -> str:
         if risks:
             parts.append("Risk factors:")
             for r in risks:
-                parts.append(f"  - [{r.get('severity','').upper()}] {r.get('category','')} — {r.get('signal_basis','')}")
+                parts.append(
+                    f"  - [{r.get('severity', '').upper()}] {r.get('category', '')} — {r.get('signal_basis', '')}"
+                )
 
         watch = d.get("watch_next") or {}
         watch_items: list[str] = []
@@ -446,6 +456,7 @@ async def _run_narrative_drift_llm(
 
     if claude_client is None:
         from app.clients.claude_client import ClaudeClient
+
         claude_client = ClaudeClient(model=config.CLAUDE_MODEL, timeout=_CLAUDE_TIMEOUT)
 
     if diff_text is not None:
@@ -553,15 +564,17 @@ def _render_markdown(result: ComparisonResult) -> str:
             if rf.added:
                 lines.append(f"**New ({len(rf.added)}):**")
                 for r in rf.added:
-                    lines.append(f"- [{r.get('severity','').upper()}] {r.get('category','')} — {r.get('signal_basis','')}")
+                    lines.append(
+                        f"- [{r.get('severity', '').upper()}] {r.get('category', '')} — {r.get('signal_basis', '')}"
+                    )
             if rf.removed:
                 lines.append(f"**Resolved ({len(rf.removed)}):**")
                 for r in rf.removed:
-                    lines.append(f"- [{r.get('severity','').upper()}] {r.get('category','')}")
+                    lines.append(f"- [{r.get('severity', '').upper()}] {r.get('category', '')}")
             if rf.unchanged:
                 lines.append(f"**Persistent ({len(rf.unchanged)}):**")
                 for r in rf.unchanged:
-                    lines.append(f"- [{r.get('severity','').upper()}] {r.get('category','')}")
+                    lines.append(f"- [{r.get('severity', '').upper()}] {r.get('category', '')}")
             lines.append("")
 
         # Events
@@ -571,11 +584,11 @@ def _render_markdown(result: ComparisonResult) -> str:
             if ev.added:
                 lines.append(f"**New ({len(ev.added)}):**")
                 for e in ev.added:
-                    lines.append(f"- {e.get('description','')} — {e.get('source','')} ({e.get('date','')})")
+                    lines.append(f"- {e.get('description', '')} — {e.get('source', '')} ({e.get('date', '')})")
             if ev.removed:
                 lines.append(f"**Dropped ({len(ev.removed)}):**")
                 for e in ev.removed:
-                    lines.append(f"- {e.get('description','')} — {e.get('source','')} ({e.get('date','')})")
+                    lines.append(f"- {e.get('description', '')} — {e.get('source', '')} ({e.get('date', '')})")
             lines.append("")
 
         # Trading
@@ -692,7 +705,11 @@ async def compare_reports(
 
     logger.info(
         "Comparing %s: %s → %s (format=%s, narrative=%s)",
-        symbol, base_date, compare_date, output_format, include_narrative,
+        symbol,
+        base_date,
+        compare_date,
+        output_format,
+        include_narrative,
     )
 
     shared_kwargs = dict(
@@ -705,19 +722,23 @@ async def compare_reports(
 
     # Load base first — its format determines what we auto-generate for compare,
     # so both sides end up in the same diff mode.
-    base_report = await _load_report_data(
-        symbol, base_date, auto_generate_today=False, **shared_kwargs
-    )
+    base_report = await _load_report_data(symbol, base_date, auto_generate_today=False, **shared_kwargs)
     compare_report = await _load_report_data(
-        symbol, compare_date, auto_generate_today=auto_generate_today,
-        auto_generate_format=base_report.format, **shared_kwargs
+        symbol,
+        compare_date,
+        auto_generate_today=auto_generate_today,
+        auto_generate_format=base_report.format,
+        **shared_kwargs,
     )
 
     auto_generated = base_report.auto_generated or compare_report.auto_generated
 
     if base_report.format != compare_report.format:
         raise FinanceAgentError(
-            message=f"Cannot compare reports with different formats: base is {base_report.format}, compare is {compare_report.format}",
+            message=(
+                f"Cannot compare reports with different formats: "
+                f"base is {base_report.format}, compare is {compare_report.format}"
+            ),
             hint="Both reports must be the same format (.json or .md). Re-generate one of them in the matching format.",
         )
 
@@ -751,7 +772,8 @@ async def compare_reports(
     else:
         mode = "markdown_fallback"
         section_diff_text = _diff_markdown_reports(
-            base_report.data, compare_report.data  # type: ignore[arg-type]
+            base_report.data,
+            compare_report.data,  # type: ignore[arg-type]
         )
         structural_summary = "Markdown fallback mode — section-level diff only."
 

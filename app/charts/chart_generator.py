@@ -40,7 +40,7 @@ from pathlib import Path
 import pandas as pd
 
 from app import config
-from app.utils.indicators import sma, rsi, macd
+from app.utils.indicators import macd, rsi, sma
 
 logger = logging.getLogger(__name__)
 
@@ -51,6 +51,7 @@ logger = logging.getLogger(__name__)
 try:
     import matplotlib
     import matplotlib.pyplot as plt
+
     _HAS_MATPLOTLIB = True
 except ImportError:
     _HAS_MATPLOTLIB = False
@@ -60,52 +61,56 @@ except ImportError:
 # ---------------------------------------------------------------------------
 
 _BG_COLOR = "#0d1b2a"
-_PRICE_COLOR = "#e8c547"    # ciepły złoty — cena
-_SMA20_COLOR = "#4fc3f7"    # jasny błękit — SMA20
-_SMA50_COLOR = "#81c784"    # zieleń — SMA50
-_SMA200_COLOR = "#ef9a9a"   # łososiowy czerwień — SMA200
-_VOL_COLOR = "#ce93d8"      # fiolet — zmienność
-_RSI_COLOR = "#f59e0b"      # bursztyn — linia RSI
-_MACD_COLOR = "#14b8a6"     # morski — linia MACD
-_SIGNAL_COLOR = "#fb923c"   # pomarańcz — linia Signal
-_HIST_POS = "#4ade80"       # zieleń — histogram MACD dodatni
-_HIST_NEG = "#f87171"       # czerwień — histogram MACD ujemny
-_GRID_COLOR = "#1e3050"     # przyciemniony niebieski — siatka
-_TEXT_COLOR = "#c8d8e8"     # jasny niebieski-szary — napisy
-_AXIS_COLOR = "#2a4060"     # ramki osi
+_PRICE_COLOR = "#e8c547"  # ciepły złoty — cena
+_SMA20_COLOR = "#4fc3f7"  # jasny błękit — SMA20
+_SMA50_COLOR = "#81c784"  # zieleń — SMA50
+_SMA200_COLOR = "#ef9a9a"  # łososiowy czerwień — SMA200
+_VOL_COLOR = "#ce93d8"  # fiolet — zmienność
+_RSI_COLOR = "#f59e0b"  # bursztyn — linia RSI
+_MACD_COLOR = "#14b8a6"  # morski — linia MACD
+_SIGNAL_COLOR = "#fb923c"  # pomarańcz — linia Signal
+_HIST_POS = "#4ade80"  # zieleń — histogram MACD dodatni
+_HIST_NEG = "#f87171"  # czerwień — histogram MACD ujemny
+_GRID_COLOR = "#1e3050"  # przyciemniony niebieski — siatka
+_TEXT_COLOR = "#c8d8e8"  # jasny niebieski-szary — napisy
+_AXIS_COLOR = "#2a4060"  # ramki osi
 
 
 # ---------------------------------------------------------------------------
 # Konfiguracja stylu matplotlib
 # ---------------------------------------------------------------------------
 
+
 def _configure_style() -> None:
     """Ustaw globalne rcParams matplotliba na ciemny motyw premium."""
-    matplotlib.rcParams.update({
-        "figure.facecolor": _BG_COLOR,
-        "axes.facecolor": _BG_COLOR,
-        "axes.edgecolor": _AXIS_COLOR,
-        "axes.labelcolor": _TEXT_COLOR,
-        "axes.grid": True,
-        "grid.color": _GRID_COLOR,
-        "grid.linestyle": "--",
-        "grid.linewidth": 0.5,
-        "xtick.color": _TEXT_COLOR,
-        "ytick.color": _TEXT_COLOR,
-        "text.color": _TEXT_COLOR,
-        "legend.facecolor": "#11263a",
-        "legend.edgecolor": _AXIS_COLOR,
-        "legend.labelcolor": _TEXT_COLOR,
-        "figure.dpi": 150,
-        "figure.figsize": (11, 4.5),
-        "font.size": 10,
-        "lines.linewidth": 1.6,
-    })
+    matplotlib.rcParams.update(
+        {
+            "figure.facecolor": _BG_COLOR,
+            "axes.facecolor": _BG_COLOR,
+            "axes.edgecolor": _AXIS_COLOR,
+            "axes.labelcolor": _TEXT_COLOR,
+            "axes.grid": True,
+            "grid.color": _GRID_COLOR,
+            "grid.linestyle": "--",
+            "grid.linewidth": 0.5,
+            "xtick.color": _TEXT_COLOR,
+            "ytick.color": _TEXT_COLOR,
+            "text.color": _TEXT_COLOR,
+            "legend.facecolor": "#11263a",
+            "legend.edgecolor": _AXIS_COLOR,
+            "legend.labelcolor": _TEXT_COLOR,
+            "figure.dpi": 150,
+            "figure.figsize": (11, 4.5),
+            "font.size": 10,
+            "lines.linewidth": 1.6,
+        }
+    )
 
 
 # ---------------------------------------------------------------------------
 # Wykres 1 — Cena + nakładka MA
 # ---------------------------------------------------------------------------
+
 
 def _plot_price_with_ma(
     df: pd.DataFrame,
@@ -132,15 +137,18 @@ def _plot_price_with_ma(
 
     # MA liczone na pełnej historii, przycięte do okna wyświetlania przez .loc
     mas: list[tuple[str, pd.Series, str, str, float]] = [
-        ("SMA 20",  sma(price_series, 20).loc[display_idx],  _SMA20_COLOR,  "-",  1.4),
-        ("SMA 50",  sma(price_series, 50).loc[display_idx],  _SMA50_COLOR,  "-",  1.4),
+        ("SMA 20", sma(price_series, 20).loc[display_idx], _SMA20_COLOR, "-", 1.4),
+        ("SMA 50", sma(price_series, 50).loc[display_idx], _SMA50_COLOR, "-", 1.4),
         ("SMA 200", sma(price_series, 200).loc[display_idx], _SMA200_COLOR, "--", 1.2),
     ]
 
     fig, ax = plt.subplots()
     ax.set_title(
         f"{symbol} — Cena i średnie kroczące ({len(df_display)}d)",
-        color=_TEXT_COLOR, fontsize=12, fontweight="bold", pad=10,
+        color=_TEXT_COLOR,
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
     )
     ax.plot(display_idx, df_display["price"], color=_PRICE_COLOR, linewidth=2.0, label="Cena", zorder=5)
 
@@ -159,6 +167,7 @@ def _plot_price_with_ma(
 # ---------------------------------------------------------------------------
 # Wykres 2 — Krocząca zmienność
 # ---------------------------------------------------------------------------
+
 
 def _plot_volatility(
     df: pd.DataFrame,
@@ -185,7 +194,10 @@ def _plot_volatility(
     fig, ax = plt.subplots()
     ax.set_title(
         f"{symbol} — Zmienność krocząca 30d ({len(df_display)}d okno)",
-        color=_TEXT_COLOR, fontsize=12, fontweight="bold", pad=10,
+        color=_TEXT_COLOR,
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
     )
     ax.plot(display_idx, vol_display, color=_VOL_COLOR, linewidth=1.6, label="Zmienność 30d")
     ax.fill_between(display_idx, vol_display, alpha=0.15, color=_VOL_COLOR)
@@ -200,6 +212,7 @@ def _plot_volatility(
 # ---------------------------------------------------------------------------
 # Wykres 3 — RSI (Relative Strength Index)
 # ---------------------------------------------------------------------------
+
 
 def _plot_rsi(
     df: pd.DataFrame,
@@ -226,7 +239,10 @@ def _plot_rsi(
     fig, ax = plt.subplots()
     ax.set_title(
         f"{symbol} — RSI (14) ({len(df_display)}d okno)",
-        color=_TEXT_COLOR, fontsize=12, fontweight="bold", pad=10,
+        color=_TEXT_COLOR,
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
     )
 
     ax.plot(display_idx, rsi_series, color=_RSI_COLOR, linewidth=1.6, label="RSI 14")
@@ -238,7 +254,7 @@ def _plot_rsi(
 
     # Kolorowe strefy — delikatne wypełnienie
     ax.fill_between(display_idx, 70, 100, alpha=0.06, color="#ef4444")
-    ax.fill_between(display_idx, 0, 30,  alpha=0.06, color="#22c55e")
+    ax.fill_between(display_idx, 0, 30, alpha=0.06, color="#22c55e")
 
     ax.set_ylim(0, 100)
     ax.set_xlabel("Data", color=_TEXT_COLOR)
@@ -252,6 +268,7 @@ def _plot_rsi(
 # ---------------------------------------------------------------------------
 # Wykres 4 — MACD
 # ---------------------------------------------------------------------------
+
 
 def _plot_macd(
     df: pd.DataFrame,
@@ -275,14 +292,17 @@ def _plot_macd(
     macd_line, signal_line, histogram = macd(df["price"])
     display_idx = df_display.index
 
-    macd_w    = macd_line.loc[display_idx]
-    signal_w  = signal_line.loc[display_idx]
-    hist_w    = histogram.loc[display_idx]
+    macd_w = macd_line.loc[display_idx]
+    signal_w = signal_line.loc[display_idx]
+    hist_w = histogram.loc[display_idx]
 
     fig, ax = plt.subplots()
     ax.set_title(
         f"{symbol} — MACD (12, 26, 9) ({len(df_display)}d okno)",
-        color=_TEXT_COLOR, fontsize=12, fontweight="bold", pad=10,
+        color=_TEXT_COLOR,
+        fontsize=12,
+        fontweight="bold",
+        pad=10,
     )
 
     # Histogram jako słupki (zielony/czerwony w zależności od znaku)
@@ -290,8 +310,8 @@ def _plot_macd(
     ax.bar(display_idx, hist_w, color=colors, alpha=0.5, label="Histogram", width=1.0)
 
     # Linie MACD i Signal
-    ax.plot(display_idx, macd_w,   color=_MACD_COLOR,   linewidth=1.5, label="MACD")
-    ax.plot(display_idx, signal_w, color=_SIGNAL_COLOR,  linewidth=1.5, label="Signal", linestyle="--")
+    ax.plot(display_idx, macd_w, color=_MACD_COLOR, linewidth=1.5, label="MACD")
+    ax.plot(display_idx, signal_w, color=_SIGNAL_COLOR, linewidth=1.5, label="Signal", linestyle="--")
 
     # Linia zerowa
     ax.axhline(0, color=_AXIS_COLOR, linewidth=0.6, linestyle=":")
@@ -307,6 +327,7 @@ def _plot_macd(
 # ---------------------------------------------------------------------------
 # Publiczne API
 # ---------------------------------------------------------------------------
+
 
 def generate_price_charts(
     df: pd.DataFrame,
@@ -361,10 +382,10 @@ def generate_price_charts(
     saved: list[Path] = []
 
     plots = [
-        (f"{stem}_price.png",      _plot_price_with_ma, "wykresu cenowego"),
-        (f"{stem}_volatility.png", _plot_volatility,    "wykresu zmienności"),
-        (f"{stem}_rsi.png",        _plot_rsi,           "wykresu RSI"),
-        (f"{stem}_macd.png",       _plot_macd,          "wykresu MACD"),
+        (f"{stem}_price.png", _plot_price_with_ma, "wykresu cenowego"),
+        (f"{stem}_volatility.png", _plot_volatility, "wykresu zmienności"),
+        (f"{stem}_rsi.png", _plot_rsi, "wykresu RSI"),
+        (f"{stem}_macd.png", _plot_macd, "wykresu MACD"),
     ]
 
     t0 = time.perf_counter()
@@ -384,6 +405,9 @@ def generate_price_charts(
 
     logger.info(
         "Chart generation for %s: %d/%d charts in %.1fs",
-        symbol, len(saved), len(plots), time.perf_counter() - t0,
+        symbol,
+        len(saved),
+        len(plots),
+        time.perf_counter() - t0,
     )
     return saved

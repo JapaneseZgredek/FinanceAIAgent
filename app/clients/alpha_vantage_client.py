@@ -1,8 +1,8 @@
 import logging
 import time
 
-import requests
 import pandas as pd
+import requests
 
 from app.clients.cache import CacheManager
 from app.config import CACHE_DIR, CACHE_TTL_HOURS
@@ -42,7 +42,9 @@ class AlphaVantageClient:
         response.raise_for_status()
         logger.info(
             "Alpha Vantage API for %s: %.1fs (HTTP %d)",
-            ticker, time.perf_counter() - t0, response.status_code,
+            ticker,
+            time.perf_counter() - t0,
+            response.status_code,
         )
         return response.json()
 
@@ -67,9 +69,7 @@ class AlphaVantageClient:
                 # Check for rate limit
                 if "Note" in data:
                     if cached_data:
-                        logger.warning(
-                            "Rate limited by AlphaVantage, falling back to cached data for %s", ticker
-                        )
+                        logger.warning("Rate limited by AlphaVantage, falling back to cached data for %s", ticker)
                         data = cached_data
                     else:
                         raise RuntimeError(f"AlphaVantage rate limit: {data['Note']}")
@@ -79,7 +79,8 @@ class AlphaVantageClient:
                     if cached_data:
                         logger.warning(
                             "API error, falling back to cached data for %s: %s",
-                            ticker, data["Error Message"],
+                            ticker,
+                            data["Error Message"],
                         )
                         data = cached_data
                     else:
@@ -88,9 +89,7 @@ class AlphaVantageClient:
                 # Validate response has expected data
                 elif "Time Series (Digital Currency Daily)" not in data:
                     if cached_data:
-                        logger.warning(
-                            "Unexpected response, falling back to cached data for %s", ticker
-                        )
+                        logger.warning("Unexpected response, falling back to cached data for %s", ticker)
                         data = cached_data
                     else:
                         raise RuntimeError(f"Unexpected response keys: {list(data.keys())}")
@@ -103,9 +102,7 @@ class AlphaVantageClient:
             except requests.RequestException as e:
                 # Network error - try to use stale cache
                 if cached_data:
-                    logger.warning(
-                        "Network error, falling back to cached data for %s: %s", ticker, e
-                    )
+                    logger.warning("Network error, falling back to cached data for %s: %s", ticker, e)
                     data = cached_data
                 else:
                     raise RuntimeError(f"Network error and no cached data available: {e}")
@@ -127,6 +124,9 @@ class AlphaVantageClient:
         df = df.sort_index()  # ascending order
         logger.debug(
             "Price data for %s: %d rows (%s to %s)",
-            ticker, len(df), df.index[0].date(), df.index[-1].date(),
+            ticker,
+            len(df),
+            df.index[0].date(),
+            df.index[-1].date(),
         )
         return df

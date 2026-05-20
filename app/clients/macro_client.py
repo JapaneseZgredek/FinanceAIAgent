@@ -15,9 +15,9 @@ pipeline continues without macro context — no exception is raised.
 """
 
 import logging
-from dataclasses import dataclass
+from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Callable
+from dataclasses import dataclass
 
 import requests
 
@@ -60,9 +60,14 @@ class MacroSnapshot:
     def is_empty(self) -> bool:
         """Return True if no fields were populated."""
         return all(
-            v is None for v in [
-                self.sp500, self.vix, self.yield_10y,
-                self.dxy, self.cpi_yoy_pct, self.fed_funds_rate,
+            v is None
+            for v in [
+                self.sp500,
+                self.vix,
+                self.yield_10y,
+                self.dxy,
+                self.cpi_yoy_pct,
+                self.fed_funds_rate,
             ]
         )
 
@@ -80,9 +85,7 @@ class MacroClient:
 
     def __init__(self, api_key: str) -> None:
         self._api_key = api_key
-        self._cache = CacheManager.with_ttl_hours(
-            f"{CACHE_DIR}/macro", _MACRO_CACHE_TTL_HOURS
-        )
+        self._cache = CacheManager.with_ttl_hours(f"{CACHE_DIR}/macro", _MACRO_CACHE_TTL_HOURS)
 
     # -------------------------------------------------------------------------
     # Internal helpers
@@ -118,10 +121,7 @@ class MacroClient:
             timeout=15,
         )
         resp.raise_for_status()
-        observations = [
-            o for o in resp.json().get("observations", [])
-            if o.get("value") not in (".", "", None)
-        ]
+        observations = [o for o in resp.json().get("observations", []) if o.get("value") not in (".", "", None)]
         self._cache.set(cache_id, observations)
         logger.info("Fetched %d observations for %s from FRED", len(observations), series_id)
         return observations
@@ -220,11 +220,11 @@ class MacroClient:
             snap.fed_funds_rate = self._val(ff, 0)
 
         tasks: list[tuple[str, Callable[[], None]]] = [
-            ("S&P 500",        fetch_sp500),
-            ("VIX",            fetch_vix),
-            ("10Y yield",      fetch_yield_10y),
-            ("USD Index",      fetch_dxy),
-            ("CPI",            fetch_cpi),
+            ("S&P 500", fetch_sp500),
+            ("VIX", fetch_vix),
+            ("10Y yield", fetch_yield_10y),
+            ("USD Index", fetch_dxy),
+            ("CPI", fetch_cpi),
             ("Fed Funds Rate", fetch_fed_funds),
         ]
 
@@ -277,9 +277,12 @@ class MacroClient:
 
         if snap.vix is not None:
             zone = (
-                "low — risk-on" if snap.vix < 15
-                else "moderate" if snap.vix < 25
-                else "elevated — caution" if snap.vix < 30
+                "low — risk-on"
+                if snap.vix < 15
+                else "moderate"
+                if snap.vix < 25
+                else "elevated — caution"
+                if snap.vix < 30
                 else "high — risk-off"
             )
             lines.append(f"VIX:             {snap.vix:>8.1f}  ({zone})")

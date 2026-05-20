@@ -19,16 +19,16 @@ import time
 from datetime import datetime
 from typing import Literal
 
+from app import config
 from app.clients.alpha_vantage_client import AlphaVantageClient
 from app.clients.cache import CacheManager
 from app.clients.claude_client import ClaudeClient
 from app.clients.macro_client import MacroClient
-from app import config
 from app.core.prompts import (
-    build_news_prompt,
-    build_price_analysis_prompt,
     build_final_report_prompt,
     build_json_report_prompt,
+    build_news_prompt,
+    build_price_analysis_prompt,
 )
 from app.tools.price_tools import get_formatted_price_data
 from app.utils.errors import FinanceAgentError
@@ -103,7 +103,9 @@ async def run(
 
     logger.info(
         "Starting analysis for %s (format: %s, language: %s)",
-        symbol, output_format, language if output_format == "markdown" else "n/a (json mode)",
+        symbol,
+        output_format,
+        language if output_format == "markdown" else "n/a (json mode)",
     )
 
     # Step 0: price data + macro indicators — both are blocking I/O, run concurrently
@@ -111,14 +113,15 @@ async def run(
     (price_data, pre_decision), macro_context = await asyncio.gather(
         asyncio.to_thread(
             get_formatted_price_data,
-            alpha_client, symbol, config.PRICE_WINDOW_DAYS, config.PRICE_LAST_N,
+            alpha_client,
+            symbol,
+            config.PRICE_WINDOW_DAYS,
+            config.PRICE_LAST_N,
         ),
         asyncio.to_thread(_fetch_macro_context, macro_client),
     )
     logger.info("Step 0 (data + macro fetch) completed in %.1fs", time.perf_counter() - t_step0)
-    _decision_line = next(
-        (l for l in pre_decision.splitlines() if "BASELINE DECISION:" in l), "N/A"
-    )
+    _decision_line = next((line for line in pre_decision.splitlines() if "BASELINE DECISION:" in line), "N/A")
     logger.info("Pre-computed decision for %s: %s", symbol, _decision_line)
 
     # Steps 1 and 2: run concurrently — neither depends on the other's output
@@ -132,7 +135,12 @@ async def run(
     # Step 3: final report — depends on both outputs above
     t_step3 = time.perf_counter()
     report = await _get_final_report(
-        symbol, news_analysis, price_analysis, language, pre_decision, claude_client,
+        symbol,
+        news_analysis,
+        price_analysis,
+        language,
+        pre_decision,
+        claude_client,
         output_format=output_format,
     )
     logger.info("Step 3 (final report) completed in %.1fs", time.perf_counter() - t_step3)
@@ -142,6 +150,7 @@ async def run(
 # =============================================================================
 # Internal helpers
 # =============================================================================
+
 
 def _fetch_macro_context(macro_client: MacroClient | None) -> str | None:
     """
@@ -161,6 +170,7 @@ def _fetch_macro_context(macro_client: MacroClient | None) -> str | None:
     except Exception as e:
         logger.warning("Macro context fetch failed, continuing without it: %s", e)
         return None
+
 
 async def _get_news_analysis(symbol: str, claude_client: ClaudeClient) -> str:
     """

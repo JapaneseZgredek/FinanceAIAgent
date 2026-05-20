@@ -65,7 +65,9 @@ class ClaudeClient:
         tools_label = f" tools={allowed_tools}" if allowed_tools else ""
         logger.info(
             "Claude CLI starting [model=%s, timeout=%ds%s]",
-            self.model, self.timeout, tools_label,
+            self.model,
+            self.timeout,
+            tools_label,
         )
         logger.debug("Prompt length: %d chars", len(prompt))
         t0 = time.perf_counter()
@@ -88,28 +90,25 @@ class ClaudeClient:
                 proc.communicate(),
                 timeout=self.timeout,
             )
-        except asyncio.TimeoutError:
+        except TimeoutError:
             proc.kill()
             await proc.communicate()
             logger.error("Claude CLI timed out after %ds", self.timeout)
-            raise FinanceAgentError(
-                f"Claude CLI timed out after {self.timeout}s. "
-                "Try again or increase timeout."
-            )
+            raise FinanceAgentError(f"Claude CLI timed out after {self.timeout}s. Try again or increase timeout.")
 
         if proc.returncode != 0:
             logger.error(
                 "Claude CLI failed (rc=%d): %s",
-                proc.returncode, stderr.decode()[:200],
+                proc.returncode,
+                stderr.decode()[:200],
             )
-            raise FinanceAgentError(
-                f"Claude CLI exited with code {proc.returncode}: {stderr.decode()[:500]}"
-            )
+            raise FinanceAgentError(f"Claude CLI exited with code {proc.returncode}: {stderr.decode()[:500]}")
 
         elapsed = time.perf_counter() - t0
         response = stdout.decode().strip()
         logger.info(
             "Claude CLI completed in %.1fs (%d chars response)",
-            elapsed, len(response),
+            elapsed,
+            len(response),
         )
         return response

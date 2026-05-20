@@ -24,15 +24,15 @@ Why this separation matters:
   and reason — which is what it excels at.
 """
 
-import pandas as pd
-import numpy as np
 from dataclasses import dataclass, field
 from typing import Literal
 
+import pandas as pd
 
 # =============================================================================
 # MOVING AVERAGES
 # =============================================================================
+
 
 def sma(series: pd.Series, period: int) -> pd.Series:
     """
@@ -80,6 +80,7 @@ def ema(series: pd.Series, period: int) -> pd.Series:
 # RSI (Relative Strength Index)
 # =============================================================================
 
+
 def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     """
     Relative Strength Index (RSI).
@@ -119,8 +120,8 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     loss = (-delta).where(delta < 0, 0.0)  # losses are stored as positive numbers
 
     # Wilder's smoothed averages — alpha=1/period ≈ slower EMA
-    avg_gain = gain.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
-    avg_loss = loss.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    avg_gain = gain.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
+    avg_loss = loss.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
 
     rs = avg_gain / avg_loss
     rsi_values = 100 - (100 / (1 + rs))
@@ -196,11 +197,11 @@ def _compute_rsi_direction(rsi_series: pd.Series, lookback: int = 5) -> tuple[fl
     # Dead band: only classify as rising/falling if the change clears ±3 pts.
     # Everything inside is labelled "flat" (noise, no meaningful direction).
     if diff > 3:
-        direction = "rising"    # momentum is genuinely building
+        direction = "rising"  # momentum is genuinely building
     elif diff < -3:
-        direction = "falling"   # momentum is genuinely fading
+        direction = "falling"  # momentum is genuinely fading
     else:
-        direction = "flat"      # within noise band — no clear directional signal
+        direction = "flat"  # within noise band — no clear directional signal
 
     return round(rsi_ago, 1), direction
 
@@ -288,6 +289,7 @@ def _detect_rsi_divergence(
 # MACD (Moving Average Convergence Divergence)
 # =============================================================================
 
+
 @dataclass
 class MACDResult:
     """
@@ -298,10 +300,11 @@ class MACDResult:
     describe momentum direction and recent events that the LLM needs to
     correctly weight the MACD signal.
     """
-    macd_line: float        # MACD line value today: EMA(12) - EMA(26)
-    signal_line: float      # Signal line today: EMA(9) of MACD line
-    histogram: float        # Histogram today: MACD - Signal
-    trend: str              # Snapshot trend label: "bullish", "bearish", "neutral"
+
+    macd_line: float  # MACD line value today: EMA(12) - EMA(26)
+    signal_line: float  # Signal line today: EMA(9) of MACD line
+    histogram: float  # Histogram today: MACD - Signal
+    trend: str  # Snapshot trend label: "bullish", "bearish", "neutral"
 
     # Dynamic: last 5 histogram values in chronological order (oldest → newest).
     # Gives the LLM the raw series to see momentum trajectory, not just the endpoint.
@@ -318,14 +321,11 @@ class MACDResult:
     # Dynamic: most recent MACD crossover within the scan window.
     # A crossover = histogram changes sign = MACD line crosses the Signal line.
     # None if no crossover was found in the lookback window.
-    crossover_type: str | None = None       # "bullish" or "bearish"
-    crossover_days_ago: int | None = None   # how many days ago it occurred
+    crossover_type: str | None = None  # "bullish" or "bearish"
+    crossover_days_ago: int | None = None  # how many days ago it occurred
 
     def __str__(self) -> str:
-        return (
-            f"MACD: {self.macd_line:.2f}, Signal: {self.signal_line:.2f}, "
-            f"Hist: {self.histogram:.2f} ({self.trend})"
-        )
+        return f"MACD: {self.macd_line:.2f}, Signal: {self.signal_line:.2f}, Hist: {self.histogram:.2f} ({self.trend})"
 
 
 def macd(
@@ -360,9 +360,9 @@ def macd(
     ema_fast = ema(series, fast_period)
     ema_slow = ema(series, slow_period)
 
-    macd_line = ema_fast - ema_slow         # positive = fast above slow = bullish
+    macd_line = ema_fast - ema_slow  # positive = fast above slow = bullish
     signal_line = ema(macd_line, signal_period)
-    histogram = macd_line - signal_line     # positive = MACD above Signal = bullish momentum
+    histogram = macd_line - signal_line  # positive = MACD above Signal = bullish momentum
 
     return macd_line, signal_line, histogram
 
@@ -415,14 +415,14 @@ def _compute_histogram_trend(histogram: pd.Series, n: int = 5) -> tuple[list[flo
     # Monotone over 3 bars is a stronger signal than just comparing endpoints,
     # because it shows consistent directional pressure with no hesitation.
     if last3[2] > last3[1] > last3[0]:
-        trend = "strongly_growing"      # consistent acceleration
+        trend = "strongly_growing"  # consistent acceleration
     elif last3[2] < last3[1] < last3[0]:
-        trend = "strongly_shrinking"    # consistent deceleration
+        trend = "strongly_shrinking"  # consistent deceleration
     # Fall back to comparing only the 5-bar endpoints for a weaker signal.
     elif values[-1] > values[0]:
-        trend = "growing"               # net gain but not monotone
+        trend = "growing"  # net gain but not monotone
     elif values[-1] < values[0]:
-        trend = "shrinking"             # net loss but not monotone
+        trend = "shrinking"  # net loss but not monotone
     else:
         trend = "flat"
 
@@ -518,7 +518,7 @@ def get_macd_result(series: pd.Series) -> MACDResult:
     elif latest_hist < 0 and latest_macd < latest_signal:
         trend = "bearish"
     else:
-        trend = "neutral"   # histogram and MACD/Signal relationship disagree
+        trend = "neutral"  # histogram and MACD/Signal relationship disagree
 
     hist_5d, hist_trend = _compute_histogram_trend(histogram)
     crossover_type, crossover_days_ago = _detect_macd_crossover(histogram)
@@ -538,6 +538,7 @@ def get_macd_result(series: pd.Series) -> MACDResult:
 # =============================================================================
 # ATR (Average True Range) — Volatility Measure
 # =============================================================================
+
 
 def atr_from_close(series: pd.Series, period: int = 14) -> pd.Series:
     """
@@ -562,7 +563,7 @@ def atr_from_close(series: pd.Series, period: int = 14) -> pd.Series:
         Series with ATR-like volatility values (in price units)
     """
     price_change = series.diff().abs()  # |Close_t - Close_{t-1}| ≈ True Range
-    atr_values = price_change.ewm(alpha=1/period, min_periods=period, adjust=False).mean()
+    atr_values = price_change.ewm(alpha=1 / period, min_periods=period, adjust=False).mean()
     return atr_values
 
 
@@ -621,8 +622,8 @@ def _compute_atr_direction(atr_pct_series: pd.Series, lookback: int = 7) -> str:
     if len(clean) < lookback + 1:
         return "stable"
 
-    past = float(clean.iloc[-(lookback + 1)])   # ATR% value `lookback` days ago
-    current = float(clean.iloc[-1])              # ATR% value today
+    past = float(clean.iloc[-(lookback + 1)])  # ATR% value `lookback` days ago
+    current = float(clean.iloc[-1])  # ATR% value today
 
     if past == 0:
         return "stable"  # degenerate case: avoid division by zero
@@ -634,11 +635,11 @@ def _compute_atr_direction(atr_pct_series: pd.Series, lookback: int = 7) -> str:
 
     # ±10% relative change = dead band for volatility direction.
     if change_pct > 10:
-        return "rising"     # volatility expanding — increasing risk/opportunity
+        return "rising"  # volatility expanding — increasing risk/opportunity
     elif change_pct < -10:
-        return "falling"    # volatility contracting — consolidation likely
+        return "falling"  # volatility contracting — consolidation likely
     else:
-        return "stable"     # within noise band — no directional signal
+        return "stable"  # within noise band — no directional signal
 
 
 # =============================================================================
@@ -694,6 +695,7 @@ def classify_volatility_regime(
 # =============================================================================
 # MOVING AVERAGE DYNAMICS
 # =============================================================================
+
 
 def _compute_ma_slope(series: pd.Series, n: int = 10) -> tuple[float, str]:
     """
@@ -820,6 +822,7 @@ def _detect_ma_cross(
 # COMPREHENSIVE ANALYSIS
 # =============================================================================
 
+
 @dataclass
 class TechnicalIndicators:
     """
@@ -849,16 +852,16 @@ class TechnicalIndicators:
     sma_50_slope: str
 
     # MA cross signal (dynamic — regime-change event)
-    ma_cross_signal: str | None     # "GOLDEN_CROSS" or "DEATH_CROSS" or None
-    ma_cross_days_ago: int | None   # recency of the cross
+    ma_cross_signal: str | None  # "GOLDEN_CROSS" or "DEATH_CROSS" or None
+    ma_cross_days_ago: int | None  # recency of the cross
 
     # --- RSI (static + dynamic) ---
     rsi_14: float
-    rsi_interpretation: str        # OVERBOUGHT / OVERSOLD / bullish / bearish / neutral
+    rsi_interpretation: str  # OVERBOUGHT / OVERSOLD / bullish / bearish / neutral
 
-    rsi_5d_ago: float              # RSI value 5 days ago — baseline for direction
-    rsi_direction: str             # "rising", "falling", "flat" (dead band ±3 pts)
-    rsi_divergence: str | None     # "BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE", None
+    rsi_5d_ago: float  # RSI value 5 days ago — baseline for direction
+    rsi_direction: str  # "rising", "falling", "flat" (dead band ±3 pts)
+    rsi_divergence: str | None  # "BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE", None
 
     # --- MACD (static snapshot + dynamic signals inside MACDResult) ---
     macd_result: MACDResult
@@ -866,7 +869,7 @@ class TechnicalIndicators:
     # --- Volatility (static + dynamic) ---
     atr_14: float
     atr_pct: float
-    atr_direction: str             # "rising", "falling", "stable" (dead band ±10% relative)
+    atr_direction: str  # "rising", "falling", "stable" (dead band ±10% relative)
     volatility_regime: VolatilityRegime
 
     # --- Overall summary (derived) ---
@@ -884,8 +887,7 @@ class TechnicalIndicators:
         # Build MA cross line — always include, either the event or "none"
         if self.ma_cross_signal:
             ma_cross_str = (
-                f"  MA Cross: {self.ma_cross_signal} "
-                f"({self.ma_cross_days_ago}d ago — recent = stronger signal)"
+                f"  MA Cross: {self.ma_cross_signal} ({self.ma_cross_days_ago}d ago — recent = stronger signal)"
             )
         else:
             ma_cross_str = "  MA Cross: none detected in recent history"
@@ -895,8 +897,7 @@ class TechnicalIndicators:
         rsi_divergence_line = ""
         if self.rsi_divergence:
             rsi_divergence_line = (
-                f"\n  RSI Divergence: {self.rsi_divergence} "
-                f"— price and RSI momentum are diverging (potential reversal)"
+                f"\n  RSI Divergence: {self.rsi_divergence} — price and RSI momentum are diverging (potential reversal)"
             )
 
         # MACD crossover line — always include
@@ -930,7 +931,11 @@ class TechnicalIndicators:
                 f"  [5d ago: {self.rsi_5d_ago:.1f}, direction: {self.rsi_direction}]"
                 f"{rsi_divergence_line}"
             ),
-            f"  MACD: {self.macd_result.macd_line:.2f} | Signal: {self.macd_result.signal_line:.2f} | Histogram: {self.macd_result.histogram:.2f}",
+            (
+                f"  MACD: {self.macd_result.macd_line:.2f}"
+                f" | Signal: {self.macd_result.signal_line:.2f}"
+                f" | Histogram: {self.macd_result.histogram:.2f}"
+            ),
             f"  MACD Histogram (5d): [{hist_vals}] → {hist_trend_label}",
             macd_cross_str,
             f"  MACD Trend: {self.macd_result.trend}",
@@ -973,16 +978,16 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
 
     # Extract latest scalar, fall back to current price if NaN
     # (NaN occurs when history is shorter than the MA period)
-    sma_20_val  = sma_20_series.iloc[-1]  if not pd.isna(sma_20_series.iloc[-1])  else current_price
-    sma_50_val  = sma_50_series.iloc[-1]  if not pd.isna(sma_50_series.iloc[-1])  else current_price
+    sma_20_val = sma_20_series.iloc[-1] if not pd.isna(sma_20_series.iloc[-1]) else current_price
+    sma_50_val = sma_50_series.iloc[-1] if not pd.isna(sma_50_series.iloc[-1]) else current_price
     sma_200_val = sma_200_series.iloc[-1] if not pd.isna(sma_200_series.iloc[-1]) else current_price
-    ema_20_val  = ema_20_series.iloc[-1]  if not pd.isna(ema_20_series.iloc[-1])  else current_price
-    ema_50_val  = ema_50_series.iloc[-1]  if not pd.isna(ema_50_series.iloc[-1])  else current_price
+    ema_20_val = ema_20_series.iloc[-1] if not pd.isna(ema_20_series.iloc[-1]) else current_price
+    ema_50_val = ema_50_series.iloc[-1] if not pd.isna(ema_50_series.iloc[-1]) else current_price
     ema_200_val = ema_200_series.iloc[-1] if not pd.isna(ema_200_series.iloc[-1]) else current_price
 
     # Static: price position relative to each MA
-    price_vs_sma_20  = "above" if current_price > sma_20_val  else "below"
-    price_vs_sma_50  = "above" if current_price > sma_50_val  else "below"
+    price_vs_sma_20 = "above" if current_price > sma_20_val else "below"
+    price_vs_sma_50 = "above" if current_price > sma_50_val else "below"
     price_vs_sma_200 = "above" if current_price > sma_200_val else "below"
 
     # Dynamic: MA slope — passes the full series so _compute_ma_slope can take
@@ -997,7 +1002,7 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
 
     # --- RSI series (full history) ---
     rsi_series = rsi(prices, 14)
-    rsi_val    = rsi_series.iloc[-1] if not pd.isna(rsi_series.iloc[-1]) else 50.0
+    rsi_val = rsi_series.iloc[-1] if not pd.isna(rsi_series.iloc[-1]) else 50.0
     rsi_interp = interpret_rsi(rsi_val)
 
     # Dynamic: RSI direction and divergence
@@ -1008,13 +1013,13 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
     macd_result = get_macd_result(prices)
 
     # --- ATR / Volatility series (full history) ---
-    atr_series     = atr_from_close(prices, 14)
+    atr_series = atr_from_close(prices, 14)
     atr_pct_series = atr_percent(prices, 14)
-    atr_val        = atr_series.iloc[-1]     if not pd.isna(atr_series.iloc[-1])     else 0.0
-    atr_pct_val    = atr_pct_series.iloc[-1] if not pd.isna(atr_pct_series.iloc[-1]) else 0.0
+    atr_val = atr_series.iloc[-1] if not pd.isna(atr_series.iloc[-1]) else 0.0
+    atr_pct_val = atr_pct_series.iloc[-1] if not pd.isna(atr_pct_series.iloc[-1]) else 0.0
 
     # Volatility regime uses the FULL historical ATR% series for percentile calc
-    vol_regime    = classify_volatility_regime(atr_pct_val, atr_pct_series.dropna())
+    vol_regime = classify_volatility_regime(atr_pct_val, atr_pct_series.dropna())
     atr_direction = _compute_atr_direction(atr_pct_series)
 
     # --- Trend Summary: simple scoring system ---
@@ -1023,20 +1028,30 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
     bullish_signals = 0
     bearish_signals = 0
 
-    if current_price > sma_20_val:          bullish_signals += 1
-    else:                                   bearish_signals += 1
+    if current_price > sma_20_val:
+        bullish_signals += 1
+    else:
+        bearish_signals += 1
 
-    if current_price > sma_50_val:          bullish_signals += 1
-    else:                                   bearish_signals += 1
+    if current_price > sma_50_val:
+        bullish_signals += 1
+    else:
+        bearish_signals += 1
 
-    if current_price > sma_200_val:         bullish_signals += 1
-    else:                                   bearish_signals += 1
+    if current_price > sma_200_val:
+        bullish_signals += 1
+    else:
+        bearish_signals += 1
 
-    if rsi_val > 50:                        bullish_signals += 1
-    else:                                   bearish_signals += 1
+    if rsi_val > 50:
+        bullish_signals += 1
+    else:
+        bearish_signals += 1
 
-    if macd_result.trend == "bullish":      bullish_signals += 1
-    elif macd_result.trend == "bearish":    bearish_signals += 1
+    if macd_result.trend == "bullish":
+        bullish_signals += 1
+    elif macd_result.trend == "bearish":
+        bearish_signals += 1
     # "neutral" MACD adds no vote to either side
 
     if bullish_signals >= 4:

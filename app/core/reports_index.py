@@ -15,10 +15,7 @@ def list_saved_reports(reports_dir: Path = Path("reports")) -> list[Path]:
     """
     if not reports_dir.exists():
         return []
-    files = [
-        p for p in reports_dir.iterdir()
-        if p.suffix in (".md", ".json") and not p.name.startswith(".")
-    ]
+    files = [p for p in reports_dir.iterdir() if p.suffix in (".md", ".json") and not p.name.startswith(".")]
     return sorted(files, reverse=True)
 
 

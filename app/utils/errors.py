@@ -7,8 +7,8 @@ This module provides:
 3. Avoids long stack traces for common failures
 """
 
-import sys
 import logging
+import sys
 from typing import NoReturn
 
 logger = logging.getLogger(__name__)
@@ -18,14 +18,15 @@ logger = logging.getLogger(__name__)
 # Custom Exception Classes
 # =============================================================================
 
+
 class FinanceAgentError(Exception):
     """Base exception for Finance AI Agent errors."""
-    
+
     def __init__(self, message: str, hint: str | None = None):
         self.message = message
         self.hint = hint
         super().__init__(message)
-    
+
     def display(self) -> str:
         """Format error for user display."""
         lines = [f"❌ Error: {self.message}"]
@@ -36,26 +37,31 @@ class FinanceAgentError(Exception):
 
 class RateLimitError(FinanceAgentError):
     """API rate limit exceeded."""
+
     pass
 
 
 class InvalidAPIKeyError(FinanceAgentError):
     """Invalid or missing API key."""
+
     pass
 
 
 class NetworkError(FinanceAgentError):
     """Network connection failed."""
+
     pass
 
 
 class ConfigurationError(FinanceAgentError):
     """Configuration or environment error."""
+
     pass
 
 
 class DataNotFoundError(FinanceAgentError):
     """Requested data not found (e.g., invalid ticker)."""
+
     pass
 
 
@@ -106,13 +112,13 @@ ERROR_PATTERNS = [
 def classify_error(exception: Exception) -> FinanceAgentError:
     """
     Classify an exception into a user-friendly error type.
-    
+
     Analyzes the exception message and type to determine the most
     appropriate user-friendly error class and message.
     """
     error_str = str(exception).lower()
     exception_type = type(exception).__name__.lower()
-    
+
     # Check against known patterns
     for pattern_info in ERROR_PATTERNS:
         for pattern in pattern_info["patterns"]:
@@ -121,20 +127,20 @@ def classify_error(exception: Exception) -> FinanceAgentError:
                     message=pattern_info["message"],
                     hint=pattern_info["hint"],
                 )
-    
+
     # Check for specific exception types
     if isinstance(exception, (ConnectionError, TimeoutError, OSError)):
         return NetworkError(
             message="Network connection failed",
             hint="Check your internet connection and try again.",
         )
-    
+
     if isinstance(exception, KeyboardInterrupt):
         return FinanceAgentError(
             message="Operation cancelled by user",
             hint=None,
         )
-    
+
     # Unknown error - wrap it
     return FinanceAgentError(
         message=f"Unexpected error: {type(exception).__name__}",

@@ -89,12 +89,7 @@ def _escape_html(text: str) -> str:
     Returns:
         HTML-safe string.
     """
-    return (
-        text.replace("&", "&amp;")
-        .replace("<", "&lt;")
-        .replace(">", "&gt;")
-        .replace('"', "&quot;")
-    )
+    return text.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;").replace('"', "&quot;")
 
 
 def _to_html_body(content: str, source_format: Literal["markdown", "json"]) -> str:
@@ -157,10 +152,10 @@ def _charts_to_html(chart_paths: list[Path]) -> str:
             continue
         b64 = base64.b64encode(path.read_bytes()).decode("ascii")
         figures.append(
-            f'<figure>'
+            f"<figure>"
             f'<img src="data:image/png;base64,{b64}" alt="{path.stem}"/>'
-            f'<figcaption>{path.stem}</figcaption>'
-            f'</figure>'
+            f"<figcaption>{path.stem}</figcaption>"
+            f"</figure>"
         )
 
     if not figures:
@@ -195,8 +190,7 @@ def _render_html(
     css = _load_template("report.css")
     # str.format() would choke on CSS curly braces — use plain replace instead.
     return (
-        html_template
-        .replace("{symbol}", symbol)
+        html_template.replace("{symbol}", symbol)
         .replace("{report_date}", export_date.isoformat())
         .replace("{css}", css)
         .replace("{charts}", charts_html)
@@ -268,7 +262,9 @@ def export_report(
     t0 = time.perf_counter()
     logger.info(
         "Exporting %s report for %s as %s",
-        source_format, symbol, export_format,
+        source_format,
+        symbol,
+        export_format,
     )
 
     # Step 1 — convert source content to an HTML fragment

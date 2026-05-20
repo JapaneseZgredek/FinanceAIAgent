@@ -5,8 +5,9 @@ All settings are loaded from environment variables with validation.
 Copy .env.example to .env and fill in your values.
 """
 
-import os
 import logging
+import os
+
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 # Helper functions for safe config parsing
 # =============================================================================
+
 
 def _get_int(key: str, default: int, min_val: int | None = None, max_val: int | None = None) -> int:
     """
@@ -143,20 +145,20 @@ CLAUDE_NEWS_CACHE_TTL_MINUTES = _get_float("CLAUDE_NEWS_CACHE_TTL_MINUTES", defa
 # Tier 1 — high-quality, analyst-attributed content with verifiable data.
 # Used first via site: operator queries; should cover the bulk of searches.
 NEWS_SOURCES_TIER1: list[str] = [
-    "coindesk.com",           # news + market analysis, named analysts, macro context
-    "cointelegraph.com",      # ETF flows (Farside data), on-chain metrics, multi-asset
-    "cryptoslate.com",        # real-time data, sentiment scoring, sector categorisation
-    "insights.glassnode.com", # on-chain analytics: SOPR, MVRV, Realized Price (BTC-focused)
+    "coindesk.com",  # news + market analysis, named analysts, macro context
+    "cointelegraph.com",  # ETF flows (Farside data), on-chain metrics, multi-asset
+    "cryptoslate.com",  # real-time data, sentiment scoring, sector categorisation
+    "insights.glassnode.com",  # on-chain analytics: SOPR, MVRV, Realized Price (BTC-focused)
 ]
 
 # Tier 2 — supplementary sources; treat with moderate scepticism.
 # Cross-check any claim from these against a Tier 1 source before including it.
 NEWS_SOURCES_TIER2: list[str] = [
-    "decrypt.co",           # fast event tracking, liquidation data (CoinGlass-sourced)
-    "coinmarketcap.com",    # aggregated analyst forecasts, TVL, institutional data
-    "beincrypto.com",       # daily coverage of all coins; weaker analytical depth
-    "ambcrypto.com",        # often surfaces for altcoins; JS-heavy, harder to parse
-    "finance.yahoo.com",    # institutional analyst reports (Standard Chartered, Bernstein)
+    "decrypt.co",  # fast event tracking, liquidation data (CoinGlass-sourced)
+    "coinmarketcap.com",  # aggregated analyst forecasts, TVL, institutional data
+    "beincrypto.com",  # daily coverage of all coins; weaker analytical depth
+    "ambcrypto.com",  # often surfaces for altcoins; JS-heavy, harder to parse
+    "finance.yahoo.com",  # institutional analyst reports (Standard Chartered, Bernstein)
 ]
 
 # Blocked — NEVER use as a source.
@@ -167,7 +169,7 @@ NEWS_SOURCES_BLOCKED: list[str] = [
     "digitalcoinprice.com",
     "investinghaven.com",
     "nftplazas.com",
-    "coindcx.com",            # /blog/price-predictions/* path specifically
+    "coindcx.com",  # /blog/price-predictions/* path specifically
     "bitcoinethereumnews.com",
     "spotedcrypto.com",
 ]
@@ -185,8 +187,7 @@ def validate_env() -> None:
     if not ALPHAVANTAGE_API_KEY:
         raise ConfigurationError(
             message="Missing required API key: ALPHAVANTAGE_API_KEY",
-            hint="Get a free key from https://www.alphavantage.co/support/#api-key\n"
-                 "Then add it to your .env file.",
+            hint="Get a free key from https://www.alphavantage.co/support/#api-key\nThen add it to your .env file.",
         )
 
     # Log full configuration state at startup
@@ -200,7 +201,9 @@ def validate_env() -> None:
     logger.info("  [LLM]     DEFAULT_LANGUAGE: %s", DEFAULT_LANGUAGE)
     logger.info("  [NEWS]    NEWS_DAYS_BACK: %d days", NEWS_DAYS_BACK)
     logger.info("  [PRICE]   PRICE_WINDOW_DAYS: %d days | PRICE_LAST_N: %d", PRICE_WINDOW_DAYS, PRICE_LAST_N)
-    logger.info("  [CACHE]   CACHE_TTL_HOURS: %.1fh | NEWS_CACHE_TTL: %.0fmin", CACHE_TTL_HOURS, CLAUDE_NEWS_CACHE_TTL_MINUTES)
+    logger.info(
+        "  [CACHE]   CACHE_TTL_HOURS: %.1fh | NEWS_CACHE_TTL: %.0fmin", CACHE_TTL_HOURS, CLAUDE_NEWS_CACHE_TTL_MINUTES
+    )
 
 
 def print_config_summary() -> None:

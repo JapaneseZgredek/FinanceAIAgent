@@ -43,14 +43,8 @@ def compute_pre_decision(indicators: TechnicalIndicators) -> str:
 
     # --- Medium-term horizon (2–6 weeks): price vs SMA20 + SMA50 ---
     # Both MAs must agree — single-MA crossing is ambiguous.
-    medium_bearish = (
-        indicators.price_vs_sma_20 == "below"
-        and indicators.price_vs_sma_50 == "below"
-    )
-    medium_bullish = (
-        indicators.price_vs_sma_20 == "above"
-        and indicators.price_vs_sma_50 == "above"
-    )
+    medium_bearish = indicators.price_vs_sma_20 == "below" and indicators.price_vs_sma_50 == "below"
+    medium_bullish = indicators.price_vs_sma_20 == "above" and indicators.price_vs_sma_50 == "above"
 
     # --- Long-term horizon (3–6 months): price vs SMA200 ---
     long_bearish = indicators.price_vs_sma_200 == "below"
@@ -76,9 +70,7 @@ def compute_pre_decision(indicators: TechnicalIndicators) -> str:
     # Mechanical decision rule
     if aligned < 2:
         decision = "NO"
-        reasoning = (
-            "Fewer than 2 horizons align — no coherent directional structure to trade."
-        )
+        reasoning = "Fewer than 2 horizons align — no coherent directional structure to trade."
     elif atr_compressing:
         decision = "WAIT"
         reasoning = (
@@ -168,8 +160,11 @@ def get_formatted_price_data(
     indicators = calculate_all_indicators(df)
     logger.debug(
         "Indicators for %s: RSI=%.1f, MACD trend=%s, vs SMA200=%s, volatility=%s",
-        symbol, indicators.rsi_14, indicators.macd_result.trend,
-        indicators.price_vs_sma_200, indicators.volatility_regime,
+        symbol,
+        indicators.rsi_14,
+        indicators.macd_result.trend,
+        indicators.price_vs_sma_200,
+        indicators.volatility_regime,
     )
 
     # Recent closes

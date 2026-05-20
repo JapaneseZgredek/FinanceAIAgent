@@ -52,9 +52,7 @@ class ComparisonInputs:
 
 
 def _ask_output_format() -> str | None:
-    choice = Prompt.ask(
-        "  Format", choices=["markdown", "json", "m", "j"], default="markdown"
-    )
+    choice = Prompt.ask("  Format", choices=["markdown", "json", "m", "j"], default="markdown")
     match choice:
         case "m" | "markdown":
             return "markdown"
@@ -65,9 +63,7 @@ def _ask_output_format() -> str | None:
 
 
 def _ask_export_format() -> str | None:
-    choice = Prompt.ask(
-        "  Export format", choices=["html", "pdf", "h", "p", "skip"], default="skip"
-    )
+    choice = Prompt.ask("  Export format", choices=["html", "pdf", "h", "p", "skip"], default="skip")
     match choice:
         case "h" | "html":
             return "html"
@@ -203,9 +199,7 @@ def _pick_saved_report() -> tuple[str, str, str, date | None] | None:
 
     parsed = parse_report_filename(path.stem)
     if parsed is None:
-        console.print(
-            f"  [yellow]Unexpected filename format '{path.name}' — charts won't be generated.[/yellow]"
-        )
+        console.print(f"  [yellow]Unexpected filename format '{path.name}' — charts won't be generated.[/yellow]")
         return path.stem, content, source_format, None
 
     symbol, report_date = parsed
@@ -266,9 +260,7 @@ def run_interactive() -> None:
                 console.rule(f"[bold green]{inputs.symbol} — Analysis Result")
                 console.print(report)
                 console.rule()
-                _post_analysis_menu(
-                    inputs.symbol, report, inputs.output_format, analysis_date, chart_paths
-                )
+                _post_analysis_menu(inputs.symbol, report, inputs.output_format, analysis_date, chart_paths)
 
             case "c":
                 inputs = _gather_comparison_inputs()

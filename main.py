@@ -1,7 +1,7 @@
 """Finance AI Agent — entry point dispatcher.
 
-    python main.py              → interactive Rich menu
-    python main.py analyze ...  → CLI (Typer subcommands)
+python main.py              → interactive Rich menu
+python main.py analyze ...  → CLI (Typer subcommands)
 """
 
 import sys

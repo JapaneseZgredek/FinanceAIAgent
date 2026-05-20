@@ -6,8 +6,8 @@ Supports different TTL configurations for various use cases:
 - Exa News: 10-30 minutes (news updates more frequently)
 """
 
-import json
 import hashlib
+import json
 import logging
 import time
 from pathlib import Path
@@ -72,7 +72,7 @@ class CacheManager:
             return None, False
 
         try:
-            with open(cache_path, "r", encoding="utf-8") as f:
+            with open(cache_path, encoding="utf-8") as f:
                 cached = json.load(f)
 
             cached_time = cached.get("timestamp", 0)
@@ -82,12 +82,16 @@ class CacheManager:
             if is_fresh:
                 logger.debug(
                     "Cache hit for %s (age: %.0fs, TTL: %.0fs)",
-                    identifier, age_seconds, self.ttl_seconds,
+                    identifier,
+                    age_seconds,
+                    self.ttl_seconds,
                 )
             else:
                 logger.info(
                     "Cache stale for %s (age: %.0fs, TTL: %.0fs)",
-                    identifier, age_seconds, self.ttl_seconds,
+                    identifier,
+                    age_seconds,
+                    self.ttl_seconds,
                 )
 
             return cached.get("data"), is_fresh
@@ -117,7 +121,7 @@ class CacheManager:
             with open(cache_path, "w", encoding="utf-8") as f:
                 json.dump(cache_entry, f)
             logger.debug("Cached response for %s", identifier)
-        except IOError as e:
+        except OSError as e:
             logger.warning("Failed to write cache for %s: %s", identifier, e)
 
     def invalidate(self, identifier: str) -> bool:
