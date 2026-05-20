@@ -1,6 +1,6 @@
 #!/bin/bash
 # =============================================================================
-# format-python.sh — auto-formatowanie plików Python za pomocą black
+# format-python.sh — auto-formatowanie plików Python za pomocą ruff
 #
 # Uruchamiany przez: PostToolUse hook (Write | Edit)
 # Wejście:           JSON przez stdin z detalami zdarzenia
@@ -42,21 +42,19 @@ if [ ! -f "$FILE_PATH" ]; then
     exit 0
 fi
 
-# Zlokalizuj black — priorytet: venv projektu > system
-# Używamy venv projektu żeby mieć tę samą wersję co developer
-if [ -x ".venv/bin/black" ]; then
-    BLACK=".venv/bin/black"
-elif command -v black &>/dev/null; then
-    BLACK="black"
+# Zlokalizuj ruff — priorytet: venv projektu > system
+if [ -x ".venv/bin/ruff" ]; then
+    RUFF=".venv/bin/ruff"
+elif command -v ruff &>/dev/null; then
+    RUFF="ruff"
 else
-    # black nie jest zainstalowany — pomiń cicho
+    # ruff nie jest zainstalowany — pomiń cicho
     exit 0
 fi
 
 # Formatuj plik w miejscu
-# --quiet: nie wypisuj "reformatted X" — to tylko szum dla Claude
-# 2>/dev/null: wycisz stderr (np. "cannot format empty file")
-"$BLACK" "$FILE_PATH" --quiet 2>/dev/null
+# 2>/dev/null: wycisz stderr
+"$RUFF" format "$FILE_PATH" --quiet 2>/dev/null
 
 # Zawsze exit 0 — PostToolUse i tak nie może cofnąć zapisanego pliku
 exit 0
