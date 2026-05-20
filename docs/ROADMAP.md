@@ -167,60 +167,66 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - Service layer extracted to `app/core/pipeline.py` (FastAPI-importable, no sys.exit).
     - `main.py` → thin dispatcher (argv > 1 → CLI, else → interactive).
 
-22. ⬚ **Streaming Claude output**
-    - Stream `claude --print` output progressively instead of waiting for the full response.
-    - Better UX for long analysis steps.
+22. ✅ **Makefile / task runner**
+    - Targets: `help`, `install`, `install-dev`, `run`, `lint`, `format`, `report`, `compare`, `export`, `charts`, `clean`, `env-check`, `test` (placeholder).
+    - Ruff replaces black + flake8 — single tool for linting and formatting.
+    - Config: `ruff.toml` (line-length=120, py312, select E/F/W/I/UP).
+    - Pre-commit hook updated from `black` to `ruff format`.
+    - *`Makefile`, `ruff.toml`, `.claude/hooks/format-python.sh`*
 
-23. ⬚ **Makefile / task runner**
-    - `make run`, `make lint`, `make test`, `make report SYMBOL=BTC`
-
-24. ⬚ **Config profile system**
+23. ⬚ **Config profile system**
     - `profiles/dev.env`, `profiles/prod.env` — switch setups easily.
-
-25. ⬚ **GitHub Actions CI**
-    - Run lint (`flake8`) and tests on every push/PR.
-    - Block merges on failure.
 
 ---
 
 ## Phase 5 — Testing & Reliability
 
-26. ⬚ **Unit tests for core components**
+24. ⬚ **Unit tests for core components**
     - Alpha Vantage JSON parsing, price stats, technical indicators.
     - *Target: `app/clients/`, `app/utils/indicators.py`, `app/tools/price_tools.py`*
 
-27. ⬚ **Integration tests (mocked APIs)**
+25. ⬚ **Integration tests (mocked APIs)**
     - Mock Alpha Vantage responses end-to-end.
     - Assert report contains required sections.
 
-28. ⬚ **Contract tests for Claude CLI output**
+26. ⬚ **Contract tests for Claude CLI output**
     - Assert that each `claude --print` step returns the expected format.
     - Retry generation if format check fails.
 
-29. ⬚ **Claude CLI rate-limit handling**
+27. ⬚ **GitHub Actions CI**
+    - Run lint (`ruff check` + `ruff format --check`) and tests (`pytest`) on every push/PR.
+    - Block merges on failure.
+    - *Requires unit tests (24) to exist first.*
+
+28. ⬚ **Claude CLI rate-limit handling**
     - Detect API rate limit errors from `claude` subprocess stderr.
     - Backoff and retry, or surface a clear user-facing message.
 
-30. ⬚ **Failure monitoring**
+29. ⬚ **Failure monitoring**
     - Track error frequency per provider (Alpha Vantage throttling, Claude CLI failures).
 
 ---
 
 ## Phase 6 — Deployment & Scheduling
 
-31. ⬚ **Scheduled daily reports**
+30. ⬚ **Scheduled daily reports**
     - Cron / GitHub Actions schedule: daily BTC + ETH digest, results saved to `reports/`.
 
-32. ⬚ **Dockerize the project**
+31. ⬚ **Dockerize the project**
     - `Dockerfile` with Claude CLI + Python dependencies pre-installed.
 
-33. ⬚ **FastAPI service**
+32. ⬚ **FastAPI service**
     - `POST /report { "symbol": "BTC" }` → Markdown / JSON response.
     - Async execution, cached results per symbol per hour.
     - *Async foundation already in place: `ClaudeClient` uses `asyncio.create_subprocess_exec`, all blocking I/O offloaded via `asyncio.to_thread`, `run()` is a native coroutine.*
 
-34. ⬚ **Minimal frontend (Streamlit)**
-    - Choose symbol, see live report generation, browse saved reports.
+33. ⬚ **Streaming Claude output (SSE)**
+    - Progress events per pipeline step via Server-Sent Events.
+    - Optional token-level streaming for Step 3 markdown output.
+    - *Deferred until FastAPI (32) is in place — streaming has no consumer without a frontend.*
+
+34. ⬚ **React frontend**
+    - Choose symbol, see live report generation with progress events, browse saved reports.
 
 35. ⬚ **Cloud deployment**
     - Targets: AWS ECS/Fargate, GCP Cloud Run, Azure App Service.
