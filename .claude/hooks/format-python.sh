@@ -1,10 +1,10 @@
 #!/bin/bash
 # =============================================================================
-# format-python.sh — auto-formatowanie plików Python za pomocą ruff
+# format-python.sh — ruff check --fix + ruff format po każdej edycji pliku .py
 #
 # Uruchamiany przez: PostToolUse hook (Write | Edit)
 # Wejście:           JSON przez stdin z detalami zdarzenia
-# Wyjście:           exit 0 zawsze (PostToolUse nie może blokować — tylko informuje)
+# Wyjście:           exit 0 = czysto; exit 2 = pozostałe błędy ruff (stderr → Claude)
 #
 # Parsowanie JSON:
 #   Używamy Pythona zamiast jq — Python jest zawsze dostępny w tym projekcie
@@ -52,9 +52,21 @@ else
     exit 0
 fi
 
-# Formatuj plik w miejscu
-# 2>/dev/null: wycisz stderr
-"$RUFF" format "$FILE_PATH" --quiet 2>/dev/null
+# 1) Auto-fix lintu (np. kolejność importów, UP*). F401 (nieużywany import) NIE jest
+#    naprawiany automatycznie — Claude często dodaje import w jednej edycji, a używa
+#    go w następnej; auto-fix usunąłby go w międzyczasie.
+"$RUFF" check --fix --unfixable F401 --quiet "$FILE_PATH" >/dev/null 2>&1
 
-# Zawsze exit 0 — PostToolUse i tak nie może cofnąć zapisanego pliku
+# 2) Formatowanie w miejscu
+"$RUFF" format --quiet "$FILE_PATH" 2>/dev/null
+
+# 3) Raport tego, czego nie dało się naprawić automatycznie.
+#    exit 2 w PostToolUse = stderr trafia do Claude jako feedback (plik i tak zapisany).
+REMAINING=$("$RUFF" check --output-format concise --quiet "$FILE_PATH" 2>&1)
+if [ -n "$REMAINING" ]; then
+    echo "ruff: pozostałe błędy w $FILE_PATH — popraw je:" >&2
+    echo "$REMAINING" >&2
+    exit 2
+fi
+
 exit 0
