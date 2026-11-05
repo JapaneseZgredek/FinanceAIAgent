@@ -347,7 +347,8 @@ make test-cov                         # coverage report (HTML + terminal)
 
 Config lives in `pyproject.toml` (`asyncio_mode = "auto"`, strict markers, coverage
 `fail_under = 90`). Coverage is currently partial — `tests/unit/utils/` covers `errors`,
-`indicators`, and `retry`; remaining directories are scaffolded (see Phase 5 in the roadmap).
+`indicators`, `logging`, and `retry`; `tests/unit/clients/` covers `cache` and
+`alpha_vantage_client`; remaining directories are scaffolded (see Phase 5 in the roadmap).
 
 ---
 

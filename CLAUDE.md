@@ -32,7 +32,7 @@ Finance_AI_Agent/
 ├── Makefile                       # Task runner (make help for all targets)
 ├── ruff.toml                      # Ruff linter/formatter config
 ├── pyproject.toml                 # pytest + coverage config
-├── requirements.txt               # Core dependencies (+ test deps)
+├── requirements.txt               # Core dependencies
 ├── requirements-dev.txt           # Dev/test tooling (ruff, pytest)
 ├── requirements.lock.txt          # Pinned versions
 ├── .env.example                   # Configuration template
@@ -88,7 +88,7 @@ Finance_AI_Agent/
 │
 ├── tests/                         # pytest suite (unit / integration / e2e)
 │   ├── conftest.py                # Shared fixtures
-│   └── unit/                      # Unit tests (utils covered; more planned)
+│   └── unit/                      # Unit tests (utils + clients covered; more planned)
 │
 ├── reports/                       # Auto-created saved reports (git-ignored)
 │   ├── YYYY-MM-DD_<SYMBOL>.md|json      # One file per symbol per day (.md or .json)
@@ -236,7 +236,7 @@ Config is validated at startup with type coercion and range checking. Invalid va
 
 A `pytest` suite lives under `tests/`, split by marker into `unit` (fast, no I/O), `integration` (file I/O, mocked subprocesses), and `e2e` (smoke tests requiring real API keys). Config is in `pyproject.toml` (`asyncio_mode = "auto"`, strict markers, coverage `fail_under = 90`, `app/interfaces/interactive.py` omitted from coverage).
 
-Current coverage is partial — `tests/unit/utils/` covers `errors`, `indicators`, and `retry`; the remaining package directories are scaffolded but not yet populated (see Phase 5 in [docs/ROADMAP.md](docs/ROADMAP.md)). Run with `make test` / `make test-unit` / `make test-cov`, or `pytest` directly. Manual end-to-end testing is still done by running `python3 main.py` with various symbols.
+Current coverage is partial — `tests/unit/utils/` covers `errors`, `indicators`, `logging`, and `retry`, and `tests/unit/clients/` covers `cache` and `alpha_vantage_client`; the remaining package directories are scaffolded but not yet populated (see Phase 5 in [docs/ROADMAP.md](docs/ROADMAP.md)). Run with `make test` / `make test-unit` / `make test-cov`, or `pytest` directly. Manual end-to-end testing is still done by running `python3 main.py` with various symbols.
 
 ## Commit Convention
 
