@@ -14,11 +14,14 @@ Finance AI Agent is a Python-based cryptocurrency market analysis system that ge
 | LLM / Orchestration | Claude Code CLI (`claude --print` subprocesses) |
 | News Search | Claude built-in `WebSearch` + `WebFetch` tools |
 | Price API | Alpha Vantage (DIGITAL_CURRENCY_DAILY) |
+| Macro API | FRED (St. Louis Fed) — S&P 500, VIX, 10Y yield, DXY, CPI, Fed funds (optional) |
+| CLI | Typer (>=0.15,<1.0) |
 | Data Processing | pandas (>=2.0.0), numpy |
 | HTTP | requests (>=2.31.0) |
 | Configuration | python-dotenv (>=1.0.0), `.env` file |
 | Export | markdown (>=3.5.0), weasyprint (>=62.0) |
 | Charts | matplotlib (>=3.8.0, optional) |
+| Testing | pytest, pytest-asyncio, pytest-cov, pytest-xdist |
 | Linting / Formatting | ruff (line-length=120, py312, select E/F/W/I/UP) |
 
 ## Project Architecture
@@ -28,7 +31,9 @@ Finance_AI_Agent/
 ├── main.py                        # Entry point — dispatcher (argv → CLI or interactive)
 ├── Makefile                       # Task runner (make help for all targets)
 ├── ruff.toml                      # Ruff linter/formatter config
-├── requirements.txt               # Core dependencies
+├── pyproject.toml                 # pytest + coverage config
+├── requirements.txt               # Core dependencies (+ test deps)
+├── requirements-dev.txt           # Dev/test tooling (ruff, pytest)
 ├── requirements.lock.txt          # Pinned versions
 ├── .env.example                   # Configuration template
 │
@@ -47,7 +52,9 @@ Finance_AI_Agent/
 │   │
 │   ├── clients/                   # External API integrations
 │   │   ├── cache.py               # Generic TTL-aware file-based cache
-│   │   └── alpha_vantage_client.py  # Crypto price API client
+│   │   ├── claude_client.py       # Async Claude CLI subprocess wrapper
+│   │   ├── alpha_vantage_client.py  # Crypto price API client
+│   │   └── macro_client.py        # FRED macro indicators client (MacroClient, MacroSnapshot)
 │   │
 │   ├── charts/                    # Price chart generation (PNG, optional matplotlib)
 │   │   ├── __init__.py
@@ -74,7 +81,14 @@ Finance_AI_Agent/
 │
 ├── docs/                          # Documentation
 │   ├── TECHNICAL_ANALYSIS.md      # Guide on technical indicators
-│   └── ROADMAP.md                 # Prioritized feature roadmap
+│   ├── MACRO_INDICATORS.md        # Macro indicators + cross-asset correlation guide (Polish)
+│   ├── ROADMAP.md                 # Prioritized feature roadmap
+│   └── adr/                       # Architecture Decision Records
+│       └── ADR-001-agent-output-redesign.md
+│
+├── tests/                         # pytest suite (unit / integration / e2e)
+│   ├── conftest.py                # Shared fixtures
+│   └── unit/                      # Unit tests (utils covered; more planned)
 │
 ├── reports/                       # Auto-created saved reports (git-ignored)
 │   ├── YYYY-MM-DD_<SYMBOL>.md|json      # One file per symbol per day (.md or .json)
@@ -90,25 +104,26 @@ Finance_AI_Agent/
 
 ```
 python3 main.py → dispatcher → interactive or CLI → pipeline.analyze_symbol() → asyncio.run(run(symbol))
-  → Step 0: Alpha Vantage fetch + indicators (asyncio.to_thread, no LLM)
+  → Step 0: Alpha Vantage fetch + indicators  ┐ concurrent via asyncio.gather
+            FRED macro snapshot (if FRED_API_KEY) ┘ (both via asyncio.to_thread, no LLM)
             compute_pre_decision() → deterministic ENTER/WAIT/NO from indicators
   → Steps 1+2: concurrent via asyncio.gather
       → Step 1: claude --print --allowedTools WebSearch,WebFetch  (news search)
-      → Step 2: claude --print  (price analysis, no web access)
+      → Step 2: claude --print  (technical + macro analysis, no web access)
   → Step 3: claude --print  (final report synthesis, no web access)
             pre_decision injected as hard constraint into prompt
             output_format="json" → build_json_report_prompt() + _validate_json_output()
-  → _save_report() → reports/YYYY-MM-DD_<SYMBOL>.md|json
+  → pipeline.save_report() → reports/YYYY-MM-DD_<SYMBOL>.md|json
 ```
 
 ### Pipeline Architecture
 
 Steps 1 and 2 run concurrently via `asyncio.gather` — wall time = `max(step1, step2)`:
 1. **News search** — WebSearch + WebFetch enabled; searches Tier 1 sources first via `site:` operator queries, falls back to Tier 2 only if needed; enforces freshness, credibility, specificity, and corroboration checks before including any event
-2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage
+2. **Price analysis** — No web access; interprets pre-computed technical indicators from Alpha Vantage plus the macro backdrop (FRED snapshot, when available), emitting a `## Macro backdrop` section consumed by Step 3
 3. **Final report** — No web access; synthesizes news and price analysis into a structured report with: short/medium/long-term horizons, a Risk Factors section (regulation / exchange incidents / liquidity / volatility spikes, medium/high severity only, with expected market behavior per category), and a Trading perspective with two mutually exclusive output paths — PATH A (Enter now) or PATH B (Wait/No) — where active HIGH risk factors override the entry decision and inject execution constraints. Supports two output formats: `markdown` (default, rendered in chosen language) and `json` (always English, structured schema for downstream processing)
 
-Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop. Step 0 also runs `compute_pre_decision()` — a deterministic Python function that derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from indicator thresholds before any LLM call. The result is injected into the Step 3 prompt as a hard constraint; the LLM may only override it via explicit rules (FOMC within 7 days, HIGH risk factor). MEDIUM risk factors do not affect the decision. This eliminates non-deterministic trading decisions across runs on identical data.
+Step 0 (price data + indicators) is offloaded via `asyncio.to_thread` — blocking Alpha Vantage I/O never blocks the event loop. When `FRED_API_KEY` is set, a `MacroClient.get_snapshot()` call runs concurrently in the same `asyncio.gather` (also via `asyncio.to_thread`); macro fetch failures degrade gracefully (logged, pipeline continues without macro context). Step 0 also runs `compute_pre_decision()` — a deterministic Python function that derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from indicator thresholds before any LLM call. The result is injected into the Step 3 prompt as a hard constraint; the LLM may only override it via explicit rules (FOMC within 7 days, HIGH risk factor). MEDIUM risk factors do not affect the decision. This eliminates non-deterministic trading decisions across runs on identical data.
 
 ## Code Style & Conventions
 
@@ -143,8 +158,17 @@ python3 main.py charts --symbol BTC --date 2026-05-10
 # Install dependencies
 pip install -r requirements.txt
 
+# Install dev/test tooling (ruff, pytest)
+pip install -r requirements-dev.txt
+
 # Install exact pinned versions
 pip install -r requirements.lock.txt
+
+# Run the test suite
+make test                         # unit + integration
+make test-unit                    # unit only
+make test-cov                     # with coverage report (fail_under=90)
+pytest tests/unit -v              # direct pytest invocation
 
 # Makefile shortcuts (venv must be active)
 make run                          # Interactive mode
@@ -153,6 +177,7 @@ make compare SYMBOL=ETH           # Compare saved reports
 make export REPORT=2026-05-10_BTC # Export to HTML
 make lint                         # ruff check + format check
 make format                       # Auto-format + auto-fix
+make test                         # Run unit + integration tests
 make help                         # All available targets
 ```
 
@@ -168,10 +193,17 @@ Copy `.env.example` to `.env` and fill in API keys.
 
 Claude Code CLI must also be installed and authenticated (`claude` in PATH).
 
+### Optional API Keys
+
+| Key | Source | Effect if missing |
+|---|---|---|
+| `FRED_API_KEY` | https://fred.stlouisfed.org/docs/api/api_key.html | Macro context disabled — pipeline runs without S&P 500 / VIX / yield / DXY / CPI / Fed-rate backdrop |
+
 ### Key Settings (all optional, have defaults)
 
 | Variable | Default | Description |
 |---|---|---|
+| `FRED_API_KEY` | _(unset)_ | Enables macro context (FRED). Disabled if missing |
 | `CLAUDE_MODEL` | `claude-opus-4-6` | Claude model used for all subprocess calls |
 | `DEFAULT_LANGUAGE` | `Polish` | Default report output language (CLI fallback only — frontends pass it per-request) |
 | `NEWS_DAYS_BACK` | `7` | News search window (1-30 days) |
@@ -187,12 +219,13 @@ Config is validated at startup with type coercion and range checking. Invalid va
 
 - **Subprocess isolation**: Each Claude call is a separate `claude --print` process. Web tools (`WebSearch`, `WebFetch`) are only granted to Step 1 — Steps 2 and 3 have no internet access.
 - **Async non-blocking subprocesses**: `ClaudeClient.run()` uses `asyncio.create_subprocess_exec` — the event loop is never blocked during Claude CLI calls. Steps 1 and 2 run concurrently via `asyncio.gather`. Blocking I/O (Alpha Vantage, file cache) is offloaded via `asyncio.to_thread`. The entire pipeline is FastAPI-compatible.
-- **Tiered source ranking**: News sources are split into Tier 1 (high trust), Tier 2 (supplementary, cross-check required), and Blocked (never use). Step 1 builds `site:` operator queries dynamically from Python lists (`_NEWS_SOURCES_TIER1/2/BLOCKED` in `claude_runner.py`) and injects mandatory verification rules (freshness, credibility, specificity, corroboration) into the prompt.
+- **Tiered source ranking**: News sources are split into Tier 1 (high trust), Tier 2 (supplementary, cross-check required), and Blocked (never use). Step 1 builds `site:` operator queries dynamically from Python lists (`NEWS_SOURCES_TIER1/2/BLOCKED` in `app/config.py`) and injects mandatory verification rules (freshness, credibility, specificity, corroboration) into the prompt.
+- **Macro context (optional)**: `MacroClient` in `app/clients/macro_client.py` fetches 6 FRED series (S&P 500, VIX, 10Y Treasury yield, DXY broad USD index, CPI YoY, Fed funds rate) in parallel via `ThreadPoolExecutor`, each cached independently (TTL 6h). `get_snapshot()` returns a `MacroSnapshot`; `format_for_llm()` renders a compact string injected into the Step 2 prompt. Entirely optional — without `FRED_API_KEY` the pipeline runs unchanged. A per-series failure leaves that field `None` and never aborts the run. See [docs/MACRO_INDICATORS.md](docs/MACRO_INDICATORS.md) for the cross-asset correlation rationale.
 - **Caching**: File-based JSON cache with TTL per data source. Falls back to stale cache on API failure.
 - **Retry**: Exponential backoff (1s → 2s → 4s → 8s, max 30s) with ±25% jitter on Alpha Vantage calls.
 - **Local pre-processing**: All technical indicators (SMA, EMA, RSI, MACD, ATR) are computed in Python before any LLM call — Claude receives a compact formatted summary, not raw time series.
 - **Deterministic pre-scoring**: `compute_pre_decision()` in `price_tools.py` derives the trading entry decision (`ENTER` / `WAIT` / `NO`) from objective indicator thresholds (MACD trend, price vs SMA20/50/200, ATR phase) before Step 3 is called. Injected as a hard constraint into the prompt — eliminates LLM non-determinism on the most critical output field.
-- **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` (markdown) or `reports/YYYY-MM-DD_<SYMBOL>.json` (JSON mode) via `_save_report()` in `main.py`. Same-day re-run overwrites the file.
+- **Report persistence**: Every successful run saves the final report to `reports/YYYY-MM-DD_<SYMBOL>.md` (markdown) or `reports/YYYY-MM-DD_<SYMBOL>.json` (JSON mode) via `save_report()` in `app/core/pipeline.py`. Same-day re-run overwrites the file.
 - **JSON output mode**: `run()` accepts `output_format: Literal["markdown", "json"]` (default `"markdown"`). In JSON mode, `build_json_report_prompt()` requests a structured object instead of markdown — same override rules apply (PRE-COMPUTED ENTRY SIGNAL, FOMC, HIGH risk factors). `_validate_json_output()` strips accidental code fences, validates with `json.loads()`, and raises `FinanceAgentError` on parse failure. JSON is always English (machine consumption — `language` param ignored).
 - **HTML/PDF export**: `export_report()` in `app/exporters/report_exporter.py` is a standalone callable — no dependency on the pipeline or `main.py`. Templates (HTML structure + CSS) live in separate files under `app/exporters/templates/`. `_render_html()` uses chained `.replace()` instead of `.format()` to avoid `KeyError` from CSS curly braces. `weasyprint` is imported lazily inside the function (optional heavy dep with system library requirements); `markdown` is imported at module level (required dep).
 - **Price charts**: `generate_price_charts()` in `app/charts/chart_generator.py` produces four static PNG files per run — price + SMA20/50/200 overlay, 30d rolling volatility, RSI (14) with overbought/oversold zones, MACD (12,26,9) with histogram. `matplotlib` is imported at module level with a `try/except ImportError` guard — gracefully returns `[]` if missing. SMA/RSI/MACD computed on the full historical df (correct warmup), sliced to display window via `.loc[]`. Charts are base64-embedded in HTML/PDF via `_charts_to_html()` in `report_exporter.py`, and also saved as `YYYY-MM-DD_<SYMBOL>_<kind>.png` in `reports/`. The `export_date` parameter is always passed explicitly — no silent fallback to `date.today()` — so exported files never overwrite a different day's report.
@@ -201,7 +234,9 @@ Config is validated at startup with type coercion and range checking. Invalid va
 
 ## Testing
 
-No automated test suite yet (planned — see [docs/ROADMAP.md](docs/ROADMAP.md)). Currently tested manually by running `python3 main.py` with various symbols.
+A `pytest` suite lives under `tests/`, split by marker into `unit` (fast, no I/O), `integration` (file I/O, mocked subprocesses), and `e2e` (smoke tests requiring real API keys). Config is in `pyproject.toml` (`asyncio_mode = "auto"`, strict markers, coverage `fail_under = 90`, `app/interfaces/interactive.py` omitted from coverage).
+
+Current coverage is partial — `tests/unit/utils/` covers `errors`, `indicators`, and `retry`; the remaining package directories are scaffolded but not yet populated (see Phase 5 in [docs/ROADMAP.md](docs/ROADMAP.md)). Run with `make test` / `make test-unit` / `make test-cov`, or `pytest` directly. Manual end-to-end testing is still done by running `python3 main.py` with various symbols.
 
 ## Commit Convention
 

@@ -70,15 +70,15 @@ Prioritized list of improvements to grow this PoC into a production-ready system
     - *`app/claude_runner.py` — `_NEWS_SOURCES_TIER1/2/BLOCKED`, `_get_news_analysis()`*
 
 13. ✅ **Macro context inputs**
-    - FRED API integration: S&P 500, VIX, 10Y Treasury yield, Gold, USD Index (DXY), CPI YoY, Fed Funds Rate.
+    - FRED API integration: S&P 500, VIX, 10Y Treasury yield, USD Index (DXY), CPI YoY, Fed Funds Rate (6 series).
     - Fetched in Step 0 concurrently with price data via `asyncio.gather` + `asyncio.to_thread`.
     - Injected into Step 2 (price analysis prompt) with interpretation guidelines per indicator.
     - Step 2 outputs a `## Macro backdrop` section consumed by Step 3.
     - FOMC/Fed narrative covered by Step 1 news search (`## Fed / Macro Backdrop` section).
     - Graceful degradation: if `FRED_API_KEY` not set, pipeline runs without macro context.
     - *`app/clients/macro_client.py` — `MacroClient`, `MacroSnapshot`*
-    - *`app/claude_runner.py` — `_fetch_macro_context()`, `run()`*
-    - *`app/prompts.py` — `build_price_analysis_prompt()`*
+    - *`app/core/claude_runner.py` — `_fetch_macro_context()`, `run()`*
+    - *`app/core/prompts.py` — `build_price_analysis_prompt()`*
 
 14. ✅ **"Risk Factors" section in report**
     - Four categories: regulation, exchange incidents, liquidity, volatility spikes.
@@ -104,6 +104,28 @@ Prioritized list of improvements to grow this PoC into a production-ready system
       (key SMA level, ATR direction, MA cross / RSI divergence).
     - Derives entirely from existing Step 1 (news) and Step 2 (price) outputs — no new API calls.
     - *`app/prompts.py` — `build_final_report_prompt()`*
+
+16. ⬚ **Intraday / live spot price at report time**
+    - **Problem:** Alpha Vantage `DIGITAL_CURRENCY_DAILY` returns data up to yesterday's close.
+      A report generated today ignores today's price action entirely — the model cannot see
+      that BTC dropped from $63,800 (midnight) to $60,600 (now). This makes the report stale
+      the moment a significant intraday move happens.
+    - **Solution:** Fetch the current spot price in Step 0 alongside historical data.
+      Inject it into Step 2 and Step 3 prompts as a `LIVE PRICE` section:
+      `"Current price as of HH:MM UTC: $60,600 (−5.0% vs yesterday's close $63,800)"`.
+    - **Candidate data sources** (in order of preference):
+      1. CoinGecko `/simple/price` — free, no API key, rate limit 10–30 req/min.
+      2. Binance public API `/api/v3/ticker/price` — free, no key, very fast.
+      3. Alpha Vantage `CRYPTO_INTRADAY` — requires existing key but limited on free tier.
+      4. Claude `WebSearch` in Step 1 — already fetches news, could also grab current price,
+         but unreliable for exact numbers and adds prompt complexity.
+    - **Impact on pipeline:**
+      - `compute_pre_decision()` should use live price (not yesterday's close) for
+        price-vs-SMA comparisons — a 5% intraday drop can flip the decision.
+      - Step 3 prompt needs explicit instruction: "The LIVE PRICE supersedes the last
+        historical close for all current-state reasoning."
+      - Cache TTL for spot price: very short (1–5 min) or no cache at all.
+    - *Touches: `app/core/claude_runner.py` (Step 0), `app/tools/price_tools.py` (`compute_pre_decision`), `app/core/prompts.py` (Steps 2 & 3)*
 
 ---
 
