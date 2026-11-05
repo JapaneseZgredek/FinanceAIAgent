@@ -37,6 +37,7 @@ WeasyPrint system requirements (PDF only):
 import base64
 import json
 import logging
+import re
 import time
 from datetime import date
 from pathlib import Path
@@ -48,6 +49,9 @@ logger = logging.getLogger(__name__)
 
 # Directory containing report.html and report.css, resolved relative to this file.
 _TEMPLATES_DIR = Path(__file__).parent / "templates"
+
+# Matches HTML comments (``<!-- ... -->``), including multi-line ones.
+_HTML_COMMENT_RE = re.compile(r"<!--.*?-->", re.DOTALL)
 
 
 # ---------------------------------------------------------------------------
@@ -188,6 +192,13 @@ def _render_html(
     """
     html_template = _load_template("report.html")
     css = _load_template("report.css")
+    # Strip HTML comments BEFORE substitution. The template's documentation
+    # comment lists the placeholder tokens ({charts}, {body}, …) verbatim, so a
+    # naive replace would expand them a second time inside the comment —
+    # duplicating the entire charts section and report body (byte-for-byte) and
+    # roughly doubling the output file size. Stripping comments first removes
+    # those phantom tokens (and keeps the shipped HTML free of dev comments).
+    html_template = _HTML_COMMENT_RE.sub("", html_template)
     # str.format() would choke on CSS curly braces — use plain replace instead.
     return (
         html_template.replace("{symbol}", symbol)
