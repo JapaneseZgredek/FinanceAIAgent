@@ -8,6 +8,7 @@ This module provides:
 """
 
 import logging
+import re
 import sys
 from typing import NoReturn
 
@@ -73,14 +74,14 @@ class DataNotFoundError(FinanceAgentError):
 ERROR_PATTERNS = [
     # Rate limits
     {
-        "patterns": ["rate limit", "too many requests", "429", "quota exceeded"],
+        "patterns": ["rate limit", "too many requests", r"\b429\b", "quota exceeded"],
         "error_class": RateLimitError,
         "message": "API rate limit exceeded",
         "hint": "Wait a few minutes before trying again, or check your API plan limits.",
     },
     # Invalid API keys
     {
-        "patterns": ["invalid api key", "unauthorized", "401", "authentication", "invalid_api_key"],
+        "patterns": ["invalid api key", "unauthorized", r"\b401\b", "authentication", "invalid_api_key"],
         "error_class": InvalidAPIKeyError,
         "message": "Invalid or missing API key",
         "hint": "Check your .env file and ensure all API keys are correct.",
@@ -119,10 +120,10 @@ def classify_error(exception: Exception) -> FinanceAgentError:
     error_str = str(exception).lower()
     exception_type = type(exception).__name__.lower()
 
-    # Check against known patterns
+    # Check against known patterns (all patterns are valid regex; plain strings match as literals)
     for pattern_info in ERROR_PATTERNS:
         for pattern in pattern_info["patterns"]:
-            if pattern in error_str or pattern in exception_type:
+            if re.search(pattern, error_str) or re.search(pattern, exception_type):
                 return pattern_info["error_class"](
                     message=pattern_info["message"],
                     hint=pattern_info["hint"],
