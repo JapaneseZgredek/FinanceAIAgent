@@ -159,7 +159,7 @@ def get_formatted_price_data(
     # Calculate technical indicators (SMA, EMA, RSI, MACD, ATR)
     indicators = calculate_all_indicators(df)
     logger.debug(
-        "Indicators for %s: RSI=%.1f, MACD trend=%s, vs SMA200=%s, volatility=%s",
+        "Indicators for %s: RSI=%s, MACD trend=%s, vs SMA200=%s, volatility=%s",
         symbol,
         indicators.rsi_14,
         indicators.macd_result.trend,
