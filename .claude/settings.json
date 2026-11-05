@@ -59,19 +59,13 @@
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/format-python.sh",
             "timeout": 30,
-            "statusMessage": "Formatowanie Python (black)..."
+            "statusMessage": "Ruff: lint --fix + format..."
           },
           {
             "type": "command",
             "command": "\"$CLAUDE_PROJECT_DIR\"/.claude/hooks/check-print-statements.sh",
             "timeout": 10,
             "statusMessage": "Sprawdzanie stylu kodu..."
-          },
-          {
-            "type": "command",
-            "command": "ruff check --select F401,E711 $(git diff --name-only --diff-filter=M '*.py') 2>/dev/null || true",
-            "timeout": 15,
-            "statusMessage": "Ruff: sprawdzanie importów i porównań..."
           }
         ]
       }
