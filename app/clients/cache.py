@@ -9,6 +9,8 @@ Supports different TTL configurations for various use cases:
 import hashlib
 import json
 import logging
+import os
+import tempfile
 import time
 from pathlib import Path
 from typing import Any
@@ -117,12 +119,30 @@ class CacheManager:
             "data": data,
         }
 
+        # Serialize first so non-serializable data fails before we touch the
+        # filesystem — this avoids leaving a partial, corrupt .json on disk.
         try:
-            with open(cache_path, "w", encoding="utf-8") as f:
-                json.dump(cache_entry, f)
+            serialized = json.dumps(cache_entry)
+        except (TypeError, ValueError) as e:
+            logger.warning("Failed to serialize cache for %s: %s", identifier, e)
+            return
+
+        # Write to a temp file in the same directory, then atomically replace.
+        # os.replace is atomic on the same filesystem, so a reader never sees a
+        # half-written file and a crash mid-write cannot corrupt the entry — the
+        # incomplete data stays in the .tmp file, never under the real name.
+        tmp_path: Path | None = None
+        try:
+            fd, tmp_name = tempfile.mkstemp(dir=cache_path.parent, suffix=".tmp")
+            tmp_path = Path(tmp_name)
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write(serialized)
+            os.replace(tmp_path, cache_path)
             logger.debug("Cached response for %s", identifier)
         except OSError as e:
             logger.warning("Failed to write cache for %s: %s", identifier, e)
+            if tmp_path is not None:
+                tmp_path.unlink(missing_ok=True)
 
     def invalidate(self, identifier: str) -> bool:
         """
