@@ -14,28 +14,34 @@ A Python-based cryptocurrency market analysis system that generates structured r
 ### 1) Modular async architecture
 Code is split into clear layers:
 
-- **clients**: API integrations (Alpha Vantage + async Claude CLI wrapper)
-- **tools**: Local data preparation (price stats + technical indicators)
-- **prompts**: Prompt builders for each pipeline step
-- **runner**: Async orchestrator — Steps 1 and 2 run concurrently via `asyncio.gather`
-- **utils**: Retry, error handling, technical indicators
+- **core**: Async orchestrator (`claude_runner`), prompt builders (`prompts`), service layer (`pipeline`), report index helpers
+- **interfaces**: Typer CLI (`cli`) and Rich interactive menu (`interactive`)
+- **clients**: API integrations (Alpha Vantage, FRED macro, async Claude CLI wrapper, cache)
+- **tools**: Local data preparation (price stats + technical indicators + deterministic pre-decision)
+- **utils**: Retry, error handling, logging, technical indicators
 
 Project structure:
 
 ```
 Finance_AI_Agent/
 │
-├── main.py                         # 🚀 Entry point - run this to start
+├── main.py                         # 🚀 Entry point - thin dispatcher (argv → CLI or interactive)
 ├── Makefile                        # Task runner (make help for targets)
 ├── ruff.toml                       # Ruff linter/formatter config
+├── pyproject.toml                  # pytest + coverage config
 ├── requirements.txt                # Dependencies (pip install -r ...)
+├── requirements-dev.txt            # Dev/test tooling (ruff, pytest)
 ├── requirements.lock.txt           # Locked versions for reproducibility
 ├── .env.example                    # Template for environment variables
 ├── README.md                       # This file
 │
 ├── docs/                           # 📚 Documentation
 │   ├── TECHNICAL_ANALYSIS.md       #    └── Technical indicators guide (SMA, RSI, MACD...)
-│   └── ROADMAP.md                  #    └── Prioritized feature roadmap
+│   ├── MACRO_INDICATORS.md         #    └── Macro indicators + cross-asset correlation guide
+│   ├── ROADMAP.md                  #    └── Prioritized feature roadmap
+│   └── adr/                        #    └── Architecture Decision Records
+│
+├── tests/                          # 🧪 pytest suite (unit / integration / e2e markers)
 │
 ├── reports/                        # 📄 Saved reports (auto-created, gitignored)
 │   ├── YYYY-MM-DD_<SYMBOL>.md|json #    └── One file per symbol per day (.md or .json)
@@ -47,14 +53,23 @@ Finance_AI_Agent/
 │
 └── app/                            # 📁 Main application package
     ├── __init__.py
-    ├── config.py                   # ⚙️  Configuration loader + validation
-    ├── claude_runner.py            # 🎯 Async pipeline orchestrator (3 Claude CLI calls)
-    ├── prompts.py                  # 📝 Prompt builders for each pipeline step
+    ├── config.py                   # ⚙️  Configuration loader + validation + news source lists
+    │
+    ├── core/                       # 🎯 Business logic (FastAPI-importable, no sys.exit)
+    │   ├── claude_runner.py        #    └── Async pipeline orchestrator (3 Claude CLI calls)
+    │   ├── prompts.py              #    └── Prompt builders for each pipeline step
+    │   ├── pipeline.py             #    └── Service layer: analyze_symbol, save_report, export, charts
+    │   └── reports_index.py        #    └── Filesystem helpers: list/parse saved reports
+    │
+    ├── interfaces/                 # 🖥️  Entry points / transport layer
+    │   ├── cli.py                  #    └── Typer CLI — analyze / compare / export / charts
+    │   └── interactive.py          #    └── Rich-enhanced interactive menu
     │
     ├── clients/                    # 🌐 External API clients
     │   ├── cache.py                #    └── Generic file-based cache (TTL support)
     │   ├── alpha_vantage_client.py #    └── Price data API (with caching + retry)
-    │   └── claude_client.py        #    └── Async Claude CLI subprocess wrapper
+    │   ├── claude_client.py        #    └── Async Claude CLI subprocess wrapper
+    │   └── macro_client.py         #    └── FRED macro indicators client (optional)
     │
     ├── charts/                     # 📊 Price chart generation (PNG, optional matplotlib)
     │   ├── __init__.py
@@ -71,10 +86,11 @@ Finance_AI_Agent/
     │       └── report.css          #         └── Premium dark-navy design; Polish CSS comments
     │
     ├── tools/                      # 🔧 Data preparation
-    │   └── price_tools.py          #    └── Price stats + technical indicators
+    │   └── price_tools.py          #    └── Price stats + technical indicators + compute_pre_decision()
     │
     └── utils/                      # 🛠️  Shared utilities
         ├── __init__.py
+        ├── logging.py              #    └── setup_logging() — idempotent, Rich fallback
         ├── retry.py                #    └── Exponential backoff decorator
         ├── errors.py               #    └── Custom exceptions + user-friendly messages
         └── indicators.py           #    └── Technical indicators (SMA, EMA, RSI, MACD, ATR)
@@ -82,15 +98,16 @@ Finance_AI_Agent/
 
 **Data flow:**
 ```
-User Input (BTC) → main.py → asyncio.run(claude_runner.run())
+User Input (BTC) → main.py → pipeline.analyze_symbol() → asyncio.run(claude_runner.run())
                                      │
-                     Step 0: Alpha Vantage + local indicators
-                             (asyncio.to_thread, no LLM)
+                     Step 0: Alpha Vantage indicators + FRED macro snapshot
+                             (concurrent via asyncio.gather + to_thread, no LLM)
+                             compute_pre_decision() → ENTER / WAIT / NO
                                      │
                     ┌────────────────┴─────────────────┐
                     ▼  asyncio.gather (concurrent)      ▼
              Step 1: Claude CLI                 Step 2: Claude CLI
-             WebSearch + WebFetch               price analysis
+             WebSearch + WebFetch               technical + macro analysis
              (news search)                      (no web access)
                     │                                   │
                     └────────────────┬──────────────────┘
@@ -121,7 +138,7 @@ The news pipeline filters signal from noise using a three-tier source ranking sy
 
 The prompt also enforces four mandatory verification checks: article freshness (must be within the configured news window), domain credibility match, concrete catalyst specificity, and multi-source corroboration (single-source claims are marked as unconfirmed).
 
-All source lists live as Python constants (`_NEWS_SOURCES_TIER1/2/BLOCKED`) in `app/claude_runner.py` — adding or removing a domain requires a one-line change that propagates to the prompt automatically.
+All source lists live as Python constants (`NEWS_SOURCES_TIER1/2/BLOCKED`) in `app/config.py` — adding or removing a domain requires a one-line change that propagates to the prompt automatically.
 
 ### 3) Price analysis with technical indicators
 Instead of sending long raw time series to the model, the price tool returns a comprehensive technical analysis:
@@ -161,7 +178,26 @@ This prevents "prompt bloat" while providing rich technical context for the LLM.
 
 > 📖 **Deep dive:** See [docs/TECHNICAL_ANALYSIS.md](docs/TECHNICAL_ANALYSIS.md) for detailed formulas, calculations, and interpretation guide.
 
-### 4) Async Claude CLI pipeline (3 steps, 2 concurrent)
+### 4) Macro context (optional)
+When a free `FRED_API_KEY` is configured, Step 0 also pulls a macro snapshot from the
+St. Louis Fed (FRED) API, fetched concurrently with the price data:
+
+- **S&P 500** (level + 1-week and YTD change)
+- **VIX** (with a risk-on/risk-off zone label)
+- **10-Year Treasury yield** (level + 1-week change in basis points)
+- **USD Index (DXY)** — broad trade-weighted (level + 1-month change)
+- **CPI YoY** (latest inflation print)
+- **Fed Funds Rate**
+
+The six series are fetched in parallel (`ThreadPoolExecutor`) and cached independently
+(TTL 6h). The formatted snapshot is injected into the Step 2 prompt so technical signals
+are interpreted *in context* — the same RSI reading means something different at VIX 32 with
+FOMC in 4 days than at VIX 13 in an easing cycle. Macro is **fully optional**: without the
+key the pipeline runs unchanged, and a failure in any single series never aborts the run.
+
+> 📖 **Deep dive:** See [docs/MACRO_INDICATORS.md](docs/MACRO_INDICATORS.md) for the cross-asset correlation rationale behind each indicator.
+
+### 5) Async Claude CLI pipeline (3 steps, 2 concurrent)
 Three `claude --print` subprocess calls — Steps 1 and 2 run concurrently:
 1. **News search** (WebSearch + WebFetch enabled) ┐ concurrent via
 2. **Price analysis** (no web access)             ┘ `asyncio.gather`
@@ -176,7 +212,8 @@ unblocked during subprocess execution, enabling concurrency and FastAPI compatib
 
 - Recommended Python: **3.12** (`asyncio.to_thread` requires 3.9+)
 - API keys:
-  - Alpha Vantage
+  - Alpha Vantage (required)
+  - FRED (optional — enables the macro context section)
 - Claude Code CLI installed and authenticated (`claude` in PATH)
 - `matplotlib>=3.8.0` for price charts (optional — graceful fallback if missing)
 
@@ -202,6 +239,7 @@ Create **.env** in the repository root (copy from `.env.example`):
 
 ```
 ALPHAVANTAGE_API_KEY=your_key
+FRED_API_KEY=your_key            # optional — enables macro context
 CLAUDE_MODEL=claude-opus-4-6
 DEFAULT_LANGUAGE=Polish
 NEWS_DAYS_BACK=7
@@ -257,6 +295,7 @@ make compare SYMBOL=ETH           # Compare saved ETH reports
 make export REPORT=2026-05-10_BTC # Export to HTML
 make lint                         # Ruff check + format check
 make format                       # Auto-format + auto-fix
+make test                         # Run unit + integration tests
 make help                         # All available targets
 ```
 
@@ -279,7 +318,7 @@ Alpha Vantage may return a rate-limit message. The app caches responses (TTL 4h)
 and falls back to stale cache on failure. Reduce `CACHE_TTL_HOURS` if needed.
 
 ### 3) Claude CLI timeout
-Increase timeout in `app/claude_runner.py` → `_CLAUDE_TIMEOUT` (default: 180s).
+Increase timeout in `app/core/claude_runner.py` → `_CLAUDE_TIMEOUT` (default: 180s).
 
 ---
 
@@ -288,6 +327,27 @@ Increase timeout in `app/claude_runner.py` → `_CLAUDE_TIMEOUT` (default: 180s)
 Never commit `.env`.
 
 If secrets were pushed to a remote repository at any point, assume they may be compromised.
+
+---
+
+## Testing
+
+A `pytest` suite lives under `tests/`, split by marker:
+
+```bash
+pip install -r requirements-dev.txt   # ruff + pytest toolchain
+make test                             # unit + integration
+make test-unit                        # unit only
+make test-cov                         # coverage report (HTML + terminal)
+```
+
+- **unit** — fast, no I/O, no network
+- **integration** — file I/O, mocked subprocesses
+- **e2e** — smoke tests that require live API keys (`make test-e2e`)
+
+Config lives in `pyproject.toml` (`asyncio_mode = "auto"`, strict markers, coverage
+`fail_under = 90`). Coverage is currently partial — `tests/unit/utils/` covers `errors`,
+`indicators`, and `retry`; remaining directories are scaffolded (see Phase 5 in the roadmap).
 
 ---
 
