@@ -19,7 +19,7 @@ guard-%:
 # Targets
 # ---------------------------------------------------------------------------
 
-.PHONY: help install install-lock install-dev run lint format report compare export charts clean env-check test
+.PHONY: help install install-lock install-dev run lint format report compare export charts clean env-check test test-unit test-integration test-e2e test-cov
 
 help: ## Show available targets
 	@grep -E '^[a-zA-Z_-]+:.*##' $(MAKEFILE_LIST) | awk 'BEGIN {FS = ":.*##"}; {printf "  \033[36m%-15s\033[0m %s\n", $$1, $$2}'
@@ -30,8 +30,8 @@ install: ## Install core dependencies
 install-lock: ## Install pinned dependencies
 	pip install -r requirements.lock.txt
 
-install-dev: ## Install dev tools (ruff)
-	pip install ruff
+install-dev: ## Install all deps including dev tools
+	pip install -r requirements-dev.txt
 
 run: ## Launch interactive mode
 	$(PYTHON) main.py
@@ -75,5 +75,17 @@ env-check: ## Verify .env and venv are set up
 		echo ".env: OK"; \
 	fi
 
-test: ## Run tests (not yet available — see docs/ROADMAP.md Phase 5)
-	@echo "No tests yet — see docs/ROADMAP.md Phase 5 (#24-26)"
+test: ## Run unit + integration tests
+	$(PYTHON) -m pytest tests/unit tests/integration -v
+
+test-unit: ## Run unit tests only
+	$(PYTHON) -m pytest tests/unit -v
+
+test-integration: ## Run integration tests only
+	$(PYTHON) -m pytest tests/integration -v
+
+test-e2e: ## Run E2E smoke tests (requires API keys)
+	$(PYTHON) -m pytest tests/e2e -v
+
+test-cov: ## Run tests with coverage report
+	$(PYTHON) -m pytest tests/unit tests/integration --cov --cov-report=term-missing --cov-report=html

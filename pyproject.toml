@@ -1,0 +1,31 @@
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+asyncio_mode = "auto"
+markers = [
+    "unit: Unit tests (fast, no I/O, no network)",
+    "integration: Integration tests (file I/O, mocked subprocesses)",
+    "e2e: End-to-end smoke tests (require API keys)",
+]
+addopts = [
+    "--strict-markers",
+    "-ra",
+    "--tb=short",
+]
+filterwarnings = [
+    "ignore::DeprecationWarning:pandas.*",
+]
+
+[tool.coverage.run]
+source = ["app", "main"]
+omit = [
+    "app/interfaces/interactive.py",
+]
+
+[tool.coverage.report]
+show_missing = true
+fail_under = 90
+exclude_lines = [
+    "pragma: no cover",
+    "if __name__",
+    "except ImportError",
+]
