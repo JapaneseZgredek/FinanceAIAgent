@@ -371,30 +371,18 @@ def _compute_histogram_trend(histogram: pd.Series, n: int = 5) -> tuple[list[flo
     """
     Compute the directional trend of the MACD histogram over the last `n` bars.
 
-    WHY the histogram trend matters more than the histogram snapshot:
-      The histogram value alone (e.g. +344) is nearly meaningless without context.
-      The *direction* of the histogram is the real signal:
-        - Histogram growing  (e.g. 200 → 300 → 344) = momentum strengthening.
-        - Histogram shrinking (e.g. 800 → 600 → 344) = momentum fading.
-          This is a warning of potential reversal even though histogram is still
-          positive and MACD trend is still labelled "bullish".
+    Uses strength = net_change / scale, where scale = mean(|values|). This is
+    scale-invariant (works on BTC histogram ±500 and altcoins ±0.05) and immune
+    to outliers inflating the denominator — unlike max-min span.
 
-    HOW "growing" and "shrinking" are defined for both positive and negative values:
-      We compare values numerically (not their absolute magnitude). This means:
-        - histogram_5d = [-800, -600, -400, -200, -50]
-          → values are increasing (less negative each day)
-          → trend = "strongly_growing"   (bearish momentum is collapsing — bullish signal)
+    Classification:
+      - |strength| < 0.2  → "flat" (net move < 20% of typical magnitude = noise)
+      - |strength| ≥ 0.2  → "growing" or "shrinking"
+      - |strength| ≥ 0.5 AND last 3 bars monotonic → "strongly_growing/shrinking"
 
-        - histogram_5d = [-50, -200, -400, -600, -800]
-          → values are decreasing (more negative each day)
-          → trend = "strongly_shrinking" (bearish momentum accelerating — bearish signal)
-
-      This is correct and intuitive: "growing" always means the histogram is
-      moving toward more positive values, regardless of its current sign.
-
-    WHY n=5:
-      5 bars gives enough history to distinguish a genuine trend from a one-day
-      spike, while keeping the LLM context footprint small.
+    "growing" always means the histogram is moving toward more positive values,
+    regardless of its current sign: [-800, -600, -400] = "strongly_growing"
+    (bearish momentum collapsing — bullish signal).
 
     Args:
         histogram: Full MACD histogram series
@@ -409,20 +397,26 @@ def _compute_histogram_trend(histogram: pd.Series, n: int = 5) -> tuple[list[flo
     if len(values) < 3:
         return values, "insufficient_data"
 
-    last3 = values[-3:]
+    net = values[-1] - values[0]
+    scale = sum(abs(v) for v in values) / len(values)
 
-    # Check the last 3 bars for strict monotone movement.
-    # Monotone over 3 bars is a stronger signal than just comparing endpoints,
-    # because it shows consistent directional pressure with no hesitation.
-    if last3[2] > last3[1] > last3[0]:
-        trend = "strongly_growing"  # consistent acceleration
-    elif last3[2] < last3[1] < last3[0]:
-        trend = "strongly_shrinking"  # consistent deceleration
-    # Fall back to comparing only the 5-bar endpoints for a weaker signal.
-    elif values[-1] > values[0]:
-        trend = "growing"  # net gain but not monotone
-    elif values[-1] < values[0]:
-        trend = "shrinking"  # net loss but not monotone
+    if scale < 1e-6:
+        return values, "flat"
+
+    strength = net / scale
+
+    last3 = values[-3:]
+    last3_rising = last3[2] > last3[1] > last3[0]
+    last3_falling = last3[2] < last3[1] < last3[0]
+
+    if last3_rising and strength > 0.5:
+        trend = "strongly_growing"
+    elif last3_falling and strength < -0.5:
+        trend = "strongly_shrinking"
+    elif strength > 0.2:
+        trend = "growing"
+    elif strength < -0.2:
+        trend = "shrinking"
     else:
         trend = "flat"
 
@@ -436,23 +430,13 @@ def _detect_macd_crossover(
     """
     Detect the most recent MACD crossover (bullish or bearish) within `lookback` bars.
 
-    WHY crossovers matter:
-      A crossover is the most actionable MACD event — it signals that momentum
-      has flipped direction. Knowing that a bullish crossover happened 3 days ago
-      vs 15 days ago dramatically changes how the LLM should weight the signal:
-        - Recent (≤5 days): strong, fresh signal — high weight
-        - Older (>10 days): fading signal, trend may already be priced in
+    A crossover = histogram changes sign = MACD line crosses the Signal line.
+    Bars where histogram == 0 are skipped (MACD exactly on Signal — no committed
+    side yet). The crossover is detected between the nearest bars that are on
+    opposite sides of zero, ignoring any zero-valued bars in between.
 
-    HOW detection works — histogram sign change:
-      The histogram = MACD - Signal. When histogram crosses zero from below,
-      MACD has just crossed above Signal → bullish crossover. Vice versa for
-      bearish. Scanning for sign changes in the histogram is computationally
-      simple and mathematically equivalent to watching the MACD/Signal crossover.
-
-    WHY we scan backwards (newest → oldest):
-      We want the MOST RECENT crossover, not the first one in the window.
-      Iterating from the end of the series toward the beginning and returning on
-      the first hit gives us the most recent event.
+    days_ago is measured from the end of the original histogram series, not from
+    the end of the dropna() slice — so trailing NaN bars are counted as elapsed days.
 
     Args:
         histogram: Full MACD histogram series
@@ -464,24 +448,37 @@ def _detect_macd_crossover(
         "bearish" (histogram turned negative).
         days_ago = 0 means it happened on the most recent bar.
     """
+    trailing_nan_count = 0
+    for v in reversed(histogram.values):
+        if pd.isna(v):
+            trailing_nan_count += 1
+        else:
+            break
+
     recent = histogram.dropna().tail(lookback)
     if len(recent) < 2:
         return None, None
 
-    # Scan from newest bar toward oldest (i = last index → 1).
-    # days_ago = (len - 1) - i: bar at i=last has days_ago=0 (today),
-    # bar at i=last-1 has days_ago=1 (yesterday), and so on.
-    for i in range(len(recent) - 1, 0, -1):
-        curr_positive = recent.iloc[i] > 0
-        prev_positive = recent.iloc[i - 1] > 0
+    # Collect indices of nonzero bars — zero means MACD is exactly on Signal,
+    # which is the boundary itself, not a committed side.
+    nonzero = [(i, recent.iloc[i]) for i in range(len(recent)) if recent.iloc[i] != 0]
 
-        if curr_positive and not prev_positive:
-            # Histogram just went from negative to positive → MACD crossed above Signal
-            return "bullish", len(recent) - 1 - i
+    if len(nonzero) < 2:
+        return None, None
 
-        elif not curr_positive and prev_positive:
-            # Histogram just went from positive to negative → MACD crossed below Signal
-            return "bearish", len(recent) - 1 - i
+    # Scan nonzero bars from newest to oldest. Compare each to the previous
+    # nonzero bar — this naturally skips any zeros in between.
+    for j in range(len(nonzero) - 1, 0, -1):
+        curr_idx, curr_val = nonzero[j]
+        _, prev_val = nonzero[j - 1]
+
+        if curr_val > 0 and prev_val < 0:
+            days_ago = len(recent) - 1 - curr_idx + trailing_nan_count
+            return "bullish", days_ago
+
+        if curr_val < 0 and prev_val > 0:
+            days_ago = len(recent) - 1 - curr_idx + trailing_nan_count
+            return "bearish", days_ago
 
     return None, None
 
@@ -614,13 +611,15 @@ def _compute_atr_direction(atr_pct_series: pd.Series, lookback: int = 7) -> str:
         lookback: Days back to compare against (default: 7 ≈ one trading week)
 
     Returns:
-        "rising", "falling", or "stable"
+        "rising", "falling", "stable", or "unknown" (insufficient data)
     """
     clean = atr_pct_series.dropna()
 
     # Need lookback+1 values: one from `lookback` days ago plus today's value.
+    # "unknown" = not enough data to measure direction — treated conservatively
+    # downstream (compute_pre_decision maps it to compressing → blocks ENTER).
     if len(clean) < lookback + 1:
-        return "stable"
+        return "unknown"
 
     past = float(clean.iloc[-(lookback + 1)])  # ATR% value `lookback` days ago
     current = float(clean.iloc[-1])  # ATR% value today
@@ -869,7 +868,7 @@ class TechnicalIndicators:
     # --- Volatility (static + dynamic) ---
     atr_14: float
     atr_pct: float
-    atr_direction: str  # "rising", "falling", "stable" (dead band ±10% relative)
+    atr_direction: str  # "rising", "falling", "stable", "unknown" (dead band ±10% relative)
     volatility_regime: VolatilityRegime
 
     # --- Overall summary (derived) ---

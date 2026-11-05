@@ -55,7 +55,7 @@ def compute_pre_decision(indicators: TechnicalIndicators) -> str:
     aligned = max(bearish_count, bullish_count)
     direction = "BEARISH" if bearish_count >= bullish_count else "BULLISH"
 
-    atr_compressing = indicators.atr_direction == "falling"
+    atr_compressing = indicators.atr_direction in ("falling", "unknown")
     atr_phase = (
         "COMPRESSING (falling — volatility contracting, breakout pending)"
         if atr_compressing
