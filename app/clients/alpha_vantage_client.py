@@ -108,6 +108,8 @@ class AlphaVantageClient:
                     raise RuntimeError(f"Network error and no cached data available: {e}")
 
         ts = data["Time Series (Digital Currency Daily)"]
+        if not ts:
+            raise RuntimeError(f"No price data returned for {ticker}")
 
         def pick_close(prices: dict) -> float:
             for key in ("4a. close (USD)", "4. close", "4b. close (USD)"):
@@ -115,6 +117,7 @@ class AlphaVantageClient:
                     return float(prices[key])
             for k, v in prices.items():
                 if "close" in k.lower():
+                    logger.warning("Unknown close-key schema for %s, using fuzzy match: %s", ticker, k)
                     return float(v)
             raise KeyError(f"No close key found. Keys: {list(prices.keys())}")
 
