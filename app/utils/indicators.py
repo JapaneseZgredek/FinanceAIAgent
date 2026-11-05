@@ -144,7 +144,7 @@ def interpret_rsi(value: float) -> str:
     return "neutral"
 
 
-def _compute_rsi_direction(rsi_series: pd.Series, lookback: int = 5) -> tuple[float, str]:
+def _compute_rsi_direction(rsi_series: pd.Series, lookback: int = 5) -> tuple[float | None, str | None]:
     """
     Determine whether RSI momentum is rising, falling, or flat over `lookback` days.
 
@@ -175,14 +175,14 @@ def _compute_rsi_direction(rsi_series: pd.Series, lookback: int = 5) -> tuple[fl
     Returns:
         Tuple of (rsi_n_days_ago, direction_label).
         direction_label is "rising", "falling", or "flat".
+        (None, None) when there are fewer than lookback+1 valid RSI values.
     """
     clean = rsi_series.dropna()
 
-    # Guard: if we don't have enough history, return flat as a safe default.
-    # iloc[-(lookback+1)] needs at least lookback+1 valid values.
+    # iloc[-(lookback+1)] needs at least lookback+1 valid values. A made-up
+    # fallback (e.g. 50 / "flat") would be fed to the LLM as if it were real.
     if len(clean) < lookback + 1:
-        val = float(clean.iloc[0]) if len(clean) > 0 else 50.0
-        return round(val, 1), "flat"
+        return None, None
 
     # iloc[-(lookback+1)] is the value exactly `lookback` days before today.
     # Example: lookback=5, series length=100 → iloc[-6] = value 5 days ago.
@@ -858,8 +858,8 @@ class TechnicalIndicators:
     rsi_14: float
     rsi_interpretation: str  # OVERBOUGHT / OVERSOLD / bullish / bearish / neutral
 
-    rsi_5d_ago: float  # RSI value 5 days ago — baseline for direction
-    rsi_direction: str  # "rising", "falling", "flat" (dead band ±3 pts)
+    rsi_5d_ago: float | None  # RSI value 5 days ago — baseline for direction; None = insufficient data
+    rsi_direction: str | None  # "rising", "falling", "flat" (dead band ±3 pts); None = insufficient data
     rsi_divergence: str | None  # "BULLISH_DIVERGENCE", "BEARISH_DIVERGENCE", None
 
     # --- MACD (static snapshot + dynamic signals inside MACDResult) ---
@@ -890,6 +890,12 @@ class TechnicalIndicators:
             )
         else:
             ma_cross_str = "  MA Cross: none detected in recent history"
+
+        # RSI direction — explicit "n/a" instead of a fake value when history is too short
+        if self.rsi_5d_ago is not None:
+            rsi_direction_str = f"[5d ago: {self.rsi_5d_ago:.1f}, direction: {self.rsi_direction}]"
+        else:
+            rsi_direction_str = "[5d ago: n/a, direction: n/a — insufficient history]"
 
         # RSI divergence line — only emitted when divergence is present
         # (keeps output clean when there's nothing to report)
@@ -925,11 +931,7 @@ class TechnicalIndicators:
             ma_cross_str,
             "",
             "MOMENTUM:",
-            (
-                f"  RSI(14): {self.rsi_14:.1f} → {self.rsi_interpretation}"
-                f"  [5d ago: {self.rsi_5d_ago:.1f}, direction: {self.rsi_direction}]"
-                f"{rsi_divergence_line}"
-            ),
+            (f"  RSI(14): {self.rsi_14:.1f} → {self.rsi_interpretation}  {rsi_direction_str}{rsi_divergence_line}"),
             (
                 f"  MACD: {self.macd_result.macd_line:.2f}"
                 f" | Signal: {self.macd_result.signal_line:.2f}"
