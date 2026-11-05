@@ -182,22 +182,24 @@ class TestComputeRSIDirection:
         _, direction = _compute_rsi_direction(s, lookback=5)
         assert direction == "flat"
 
-    def test_insufficient_data(self):
-        s = pd.Series([55.0, 60.0])
-        _, direction = _compute_rsi_direction(s, lookback=5)
-        assert direction == "flat"
+    @pytest.mark.parametrize(
+        "values",
+        [[], [42.0], [55.0, 60.0], [50.0, 51.0, 52.0, 53.0, 54.0]],
+        ids=["empty", "single", "two", "lookback_only"],
+    )
+    def test_insufficient_data_returns_none(self, values):
+        """Fewer than lookback+1 values → (None, None), never a made-up fallback."""
+        s = pd.Series(values, dtype=float)
+        assert _compute_rsi_direction(s, lookback=5) == (None, None)
 
-    def test_empty_series(self):
-        s = pd.Series([], dtype=float)
-        rsi_ago, direction = _compute_rsi_direction(s, lookback=5)
-        assert direction == "flat"
-        assert rsi_ago == pytest.approx(50.0)
+    def test_nan_only_returns_none(self):
+        s = pd.Series([float("nan")] * 10)
+        assert _compute_rsi_direction(s, lookback=5) == (None, None)
 
-    def test_single_value(self):
-        s = pd.Series([42.0])
-        rsi_ago, direction = _compute_rsi_direction(s, lookback=5)
-        assert direction == "flat"
-        assert rsi_ago == pytest.approx(42.0)
+    def test_minimum_data_computes_direction(self):
+        """Exactly lookback+1 values is enough."""
+        s = pd.Series([50.0, 51.0, 52.0, 53.0, 54.0, 60.0])
+        assert _compute_rsi_direction(s, lookback=5) == (50.0, "rising")
 
 
 # ===================================================================
@@ -768,6 +770,20 @@ class TestFormatForLLM:
         output = ind.format_for_llm(70000.0)
         assert "BULLISH_DIVERGENCE" in output
         assert "potential reversal" in output
+
+    def test_rsi_direction_present(self, sample_technical_indicators):
+        output = sample_technical_indicators.format_for_llm(70000.0)
+        assert "[5d ago: 55.0, direction: rising]" in output
+
+    def test_rsi_direction_missing(self):
+        from tests.unit.conftest import _make_indicators
+
+        ind = _make_indicators()
+        ind.rsi_5d_ago = None
+        ind.rsi_direction = None
+        output = ind.format_for_llm(70000.0)
+        assert "direction: n/a — insufficient history" in output
+        assert "None" not in output
 
     def test_macd_crossover_present(self, sample_technical_indicators):
         output = sample_technical_indicators.format_for_llm(70000.0)
