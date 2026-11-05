@@ -129,9 +129,9 @@ def rsi(series: pd.Series, period: int = 14) -> pd.Series:
     return rsi_values
 
 
-def interpret_rsi(value: float) -> str:
-    """Interpret RSI value as a human-readable market condition label."""
-    if pd.isna(value):
+def interpret_rsi(value: float | None) -> str:
+    """Interpret RSI value as a human-readable market condition label ("N/A" for None/NaN)."""
+    if value is None or pd.isna(value):
         return "N/A"
     if value >= 70:
         return "OVERBOUGHT"
@@ -855,8 +855,8 @@ class TechnicalIndicators:
     ma_cross_days_ago: int | None  # recency of the cross
 
     # --- RSI (static + dynamic) ---
-    rsi_14: float
-    rsi_interpretation: str  # OVERBOUGHT / OVERSOLD / bullish / bearish / neutral
+    rsi_14: float | None  # None = insufficient history (or flat prices → 0/0)
+    rsi_interpretation: str  # OVERBOUGHT / OVERSOLD / bullish / bearish / neutral / N/A
 
     rsi_5d_ago: float | None  # RSI value 5 days ago — baseline for direction; None = insufficient data
     rsi_direction: str | None  # "rising", "falling", "flat" (dead band ±3 pts); None = insufficient data
@@ -891,7 +891,8 @@ class TechnicalIndicators:
         else:
             ma_cross_str = "  MA Cross: none detected in recent history"
 
-        # RSI direction — explicit "n/a" instead of a fake value when history is too short
+        # RSI value/direction — explicit "n/a" instead of a fake value when history is too short
+        rsi_str = f"{self.rsi_14:.1f}" if self.rsi_14 is not None else "n/a"
         if self.rsi_5d_ago is not None:
             rsi_direction_str = f"[5d ago: {self.rsi_5d_ago:.1f}, direction: {self.rsi_direction}]"
         else:
@@ -931,7 +932,7 @@ class TechnicalIndicators:
             ma_cross_str,
             "",
             "MOMENTUM:",
-            (f"  RSI(14): {self.rsi_14:.1f} → {self.rsi_interpretation}  {rsi_direction_str}{rsi_divergence_line}"),
+            (f"  RSI(14): {rsi_str} → {self.rsi_interpretation}  {rsi_direction_str}{rsi_divergence_line}"),
             (
                 f"  MACD: {self.macd_result.macd_line:.2f}"
                 f" | Signal: {self.macd_result.signal_line:.2f}"
@@ -1003,7 +1004,8 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
 
     # --- RSI series (full history) ---
     rsi_series = rsi(prices, 14)
-    rsi_val = rsi_series.iloc[-1] if not pd.isna(rsi_series.iloc[-1]) else 50.0
+    # None instead of a made-up 50.0 — a fake value would also cast a fake trend vote below
+    rsi_val = None if pd.isna(rsi_series.iloc[-1]) else float(rsi_series.iloc[-1])
     rsi_interp = interpret_rsi(rsi_val)
 
     # Dynamic: RSI direction and divergence
@@ -1044,10 +1046,12 @@ def calculate_all_indicators(df: pd.DataFrame) -> TechnicalIndicators:
     else:
         bearish_signals += 1
 
-    if rsi_val > 50:
-        bullish_signals += 1
-    else:
-        bearish_signals += 1
+    # Missing RSI casts no vote (same as neutral MACD below)
+    if rsi_val is not None:
+        if rsi_val > 50:
+            bullish_signals += 1
+        else:
+            bearish_signals += 1
 
     if macd_result.trend == "bullish":
         bullish_signals += 1

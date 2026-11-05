@@ -153,6 +153,9 @@ class TestInterpretRSI:
     def test_nan_input(self):
         assert interpret_rsi(float("nan")) == "N/A"
 
+    def test_none_input(self):
+        assert interpret_rsi(None) == "N/A"
+
 
 # ===================================================================
 # _compute_rsi_direction
@@ -710,6 +713,13 @@ class TestCalculateAllIndicators:
     def test_short_series_fallback(self, short_price_df):
         result = calculate_all_indicators(short_price_df)
         assert result.sma_200 == pytest.approx(short_price_df["price"].iloc[-1])
+
+    def test_short_series_rsi_is_none(self, short_price_df):
+        """10 rows < RSI(14) warmup → None, never a made-up 50.0; still renders for the LLM."""
+        result = calculate_all_indicators(short_price_df)
+        assert result.rsi_14 is None
+        assert result.rsi_interpretation == "N/A"
+        assert "RSI(14): n/a → N/A" in result.format_for_llm(110.0)
 
     def test_trend_summary_format(self, sample_price_df):
         result = calculate_all_indicators(sample_price_df)
