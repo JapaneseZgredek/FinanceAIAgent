@@ -13,7 +13,6 @@ Ceny aktywów na powierzchni — kryptowalut, akcji, surowców — poruszają si
 | **S&P 500**               | Indeks 500 największych spółek giełdowych w USA, ważony kapitalizacją. Globalny benchmark dla klasy akcji.                                                     |
 | **VIX**                   | CBOE Volatility Index — implikowana 30-dniowa zmienność opcji na S&P 500. Miara oczekiwanego strachu i niepewności rynkowej.                                   |
 | **10Y Treasury Yield**    | Rentowność 10-letnich obligacji skarbowych USA. Globalna stopa referencyjna, wyznaczająca stopę dyskontową dla wyceny aktywów.                                 |
-| **Gold**                  | Spot price złota (XAU/USD). Aktywo rezerwowe, historycznie traktowane jako zabezpieczenie przed inflacją i niepewnością geopolityczną.                         |
 | **CPI**                   | Consumer Price Index — miesięczny indeks cen konsumenckich w USA. Główna miara inflacji śledzona przez Fed przy decyzjach o stopach.                           |
 | **Fed Funds Rate / FOMC** | Efektywna stopa procentowa ustalana przez Federalny Komitet Otwartego Rynku (FOMC) osiem razy w roku. Determinuje koszt pieniądza w całym systemie finansowym. |
 
@@ -29,7 +28,6 @@ Ceny aktywów na powierzchni — kryptowalut, akcji, surowców — poruszają si
 | S&P 500   | ⬆ umiarkowana–silna (risk-off) | benchmark                    | ⬆ silna                           | ⬆ umiarkowana (przemysłowe)  |
 | VIX       | ⬇ silna                        | ⬇ silna                      | ⬇ silna                           | ⬇ umiarkowana                |
 | 10Y Yield | ⬇ umiarkowana                  | ⬇ silna (growth) / ⬆ (banki) | ⬇ umiarkowana                     | ⬇ umiarkowana (złoto: silna) |
-| Gold      | ⬆ słaba                        | ⬇ słaba                      | ⬆ umiarkowana (kryzysy)           | benchmark dla metali         |
 | CPI       | ⬇ pośrednia                    | ⬇ umiarkowana                | ⬇ umiarkowana                     | ⬆ pozytywna                  |
 | Fed Rate  | ⬇ silna                        | ⬇ silna                      | ⬇ silna                           | ⬇ umiarkowana                |
 
@@ -74,14 +72,6 @@ Rentowność 10Y wyznacza globalną stopę dyskontową. Bitcoin nie generuje cas
 
 *Wzrost 10Y yield z 1.5% do 4.8% w latach 2022–2023 korelował ze spadkiem BTC z ~47k do ~16k USD.*
 
-### Gold — złoto
-
-**Korelacja: słaba pozytywna (0.2–0.4)**
-
-Narracja "Bitcoin jako cyfrowe złoto" ma słabe odzwierciedlenie w krótkoterminowych danych. Złoto jest aktywem defensywnym — rośnie w niepewności geopolitycznej i przy słabym dolarze, zmienność ma niską. BTC w tych samych warunkach często spada, bo rynek traktuje go jak aktywo ryzykowne. Korelacja pozytywna ujawnia się głównie wtedy, gdy dolar traci wartość długoterminowo i oba aktywa zyskują jako alternatywa dla fiatowych walut.
-
-*Złoto rosnące przy spadającym BTC wskazuje na risk-off bez komponentu deprecjacji dolara.*
-
 ### CPI — inflacja
 
 **Korelacja: pośrednia, z opóźnieniem 1–3 miesięcy**
@@ -124,12 +114,6 @@ Rentowność 10Y jest stopą dyskontową modeli DCF — każdy punkt procentowy 
 
 *2022: 10Y yield +270bp → S&P 500 -19%, NASDAQ -33%, sektor bankowy +1%.*
 
-### Gold — złoto
-
-**Korelacja: niska, zazwyczaj odwrotna**
-
-Złoto i akcje rywalizują o alokację w portfelach instytucjonalnych. W środowisku risk-on kapitał rotuje z bezpiecznych przystani do akcji. W kryzysach kierunek się odwraca — choć w krachach płynnościowych (2008, marzec 2020) złoto też przejściowo spada, gdy fundusze wyprzedają wszystko na pokrycie margin calls.
-
 ### CPI — inflacja
 
 **Korelacja: negatywna przy inflacji powyżej celu**
@@ -171,12 +155,6 @@ Choć VIX technicznie mierzy zmienność S&P 500, jest traktowany jako globalny 
 **Korelacja: umiarkowana, wyraźna przy gwałtownych zmianach**
 
 Obligacje 10Y USA są globalnym standardem "bezpiecznego zwrotu". Gwałtowny wzrost yield przyciąga kapitał do USD z rynków azjatyckich i europejskich. Dla Japonii efekt jest szczególnie widoczny: przez lata ultra-niskich stóp BOJ carry trade (pożyczanie tanich jenów, inwestowanie w wyżej oprocentowane USD) był powszechny — każda zmiana różnicy rentowności US–JP bezpośrednio wpływa na kurs USD/JPY i wyceny japońskich spółek.
-
-### Gold — złoto
-
-**Korelacja: niska na co dzień; wyraźna przy kryzysach geopolitycznych**
-
-Dla indeksów europejskich złoto pełni większą rolę informacyjną niż dla USA — Europa jest bliżej historycznych i aktualnych ryzyk geopolitycznych, a wzrost ceny złota sygnalizuje narastające obawy. Indeksy krajów wydobywających złoto (Australia, Kanada, RPA) mają strukturalną pozytywną korelację z jego ceną przez sektor wydobywczy w składzie indeksu.
 
 ### CPI — inflacja
 
@@ -223,10 +201,6 @@ Spekulacyjne pozycje w futures na ropę, miedź i srebro są gwałtownie likwido
 Wyższe yieldy wzmacniają dolara, co obniża nominalne ceny surowców (mechanizm opisany przy DXY). Dla złota efekt jest bezpośredni i silny: złoto nie płaci odsetek, więc gdy obligacje oferują 5% bez ryzyka, argument za trzymaniem złota znacząco słabnie. Surowce energetyczne i rolne reagują słabiej — ich ceny są zdominowane przez czynniki podaży i popytu fizycznego.
 
 *Wzrost 10Y yield do 5% w 2023 wywierał systematyczną presję na ceny złota przez cały rok.*
-
-### Gold — złoto
-
-W grupie surowców złoto pełni rolę benchmarku dla metali szlachetnych. Srebro, platyna i pallad poruszają się statystycznie w zbliżonym kierunku, ale z wyższą betą i większą zmiennością. Srebro ma dodatkowy komponent przemysłowy (elektronika, fotowoltaika) — w recesji traci więcej niż złoto.
 
 ### CPI — inflacja
 

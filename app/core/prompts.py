@@ -146,8 +146,6 @@ Macro interpretation guidelines:
 - VIX > 25: elevated fear — institutional selling likely across risk assets
 - 10Y yield rising: tighter financial conditions — compresses valuations of yield-less assets
 - CPI above 3%: inflationary pressure → potentially hawkish Fed → USD strength risk
-- Gold rising alongside crypto: broad dollar weakness / store-of-value demand
-- Gold rising while crypto falls: risk-off rotation to traditional safe haven
 """
 
     return f"""\
@@ -175,7 +173,7 @@ overall market structure (bullish above SMA200 / bearish below / transitional).
 
 ## Macro backdrop
 Only include this section if macro context was provided above. \
-In 2–3 sentences: how do the current macro conditions (DXY, VIX, yields, gold, CPI, Fed rate) \
+In 2–3 sentences: how do the current macro conditions (DXY, VIX, yields, CPI, Fed rate) \
 frame the risk environment for {symbol}? Name the dominant macro force and whether it \
 reinforces or conflicts with the technical picture. \
 If no macro context was provided, omit this section entirely.
